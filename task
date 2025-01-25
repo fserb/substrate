@@ -1,0 +1,26 @@
+#!/bin/bash
+set -euo pipefail
+IFS=$'\n\t'
+
+DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+
+function build {
+  xcaddy build --with=
+}
+
+function complexity {
+  IGNORE="" compl complexity "$@"
+}
+
+function graph {
+  IGNORE="" compl graph "$@"
+}
+
+function help {
+  echo "$0 <task> <args>"
+  echo "Tasks:"
+  compgen -A function | grep -v "^_" | cat -n
+}
+
+"${@:-help}"
+
