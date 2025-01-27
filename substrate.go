@@ -18,14 +18,12 @@ var (
 	_ caddy.Module      = (*App)(nil)
 	_ caddy.Provisioner = (*App)(nil)
 	_ caddy.App         = (*App)(nil)
+	// _ caddyfile.Unmarshaler = (*App)(nil)
 )
 
 type App struct {
-	Command []string          `json:"command,omitempty"`
-	Env     map[string]string `json:"env,omitempty"`
-	User    string            `json:"user,omitempty"`
-
-	log *zap.Logger
+	Substrates [](*SubstrateMiddleware)
+	log        *zap.Logger
 }
 
 func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) {
@@ -40,7 +38,6 @@ func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) 
 		Name:  "substrate",
 		Value: caddyconfig.JSON(app, nil),
 	}, nil
-
 }
 
 func (App) CaddyModule() caddy.ModuleInfo {
@@ -50,15 +47,34 @@ func (App) CaddyModule() caddy.ModuleInfo {
 	}
 }
 
+// func (a *App) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
+//
+// 	d.Next() // consume directive name
+//
+// 	// require an argument
+// 	if !d.NextArg() {
+// 		return d.ArgErr()
+// 	}
+//
+// 	// store the argument
+// 	// a.Output = d.Val()
+// 	return nil
+// }
+
 func (h *App) Provision(ctx caddy.Context) error {
 	h.log = ctx.Logger(h)
 	h.log.Info("Provisioning substrate")
-
+	h.Substrates = make([]*SubstrateMiddleware, 0)
 	return nil
 }
 
 func (h *App) Start() error {
 	h.log.Info("Starting substrate")
+
+	for _, sub := range h.Substrates {
+		h.log.Info("Substrate", zap.Any("sub", sub))
+	}
+
 	return nil
 }
 
