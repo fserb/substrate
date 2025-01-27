@@ -26,6 +26,7 @@ var (
 )
 
 type SubstrateMiddleware struct {
+	ID      string            `json:"@id,omitempty"`
 	Command []string          `json:"command,omitempty"`
 	Env     map[string]string `json:"env,omitempty"`
 	User    string            `json:"user,omitempty"`
@@ -69,6 +70,7 @@ func (s *SubstrateMiddleware) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 	}
 	h.Next() // consume the directive name again (matcher parsing resets)
 	s.matcherSet = matcherSet
+	s.ID = "HELLO"
 
 	for h.NextBlock(0) {
 		switch h.Val() {

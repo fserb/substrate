@@ -1,14 +1,12 @@
 {
-  admin :2020
-  substrate
+	admin :2020
+	substrate
 }
 
 test:80 {
-
-  root .
-  substrate / {
-    command ls
-    user fserb
-  }
+	root .
+	substrate / {
+		command ls
+		user fserb
+	}
 }
-
