@@ -2,6 +2,7 @@ package substrate
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -138,11 +139,32 @@ func (h *App) startServer() error {
 }
 
 func (h *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.log.Info("Serving HTTP", zap.String("path", r.URL.Path))
-	for _, sub := range h.Substrates {
-		h.log.Info("Substrate", zap.Any("sub", sub), zap.String("key", sub.Key()))
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Unsupported Media Type", http.StatusUnsupportedMediaType)
+		return
 	}
 
+	key := r.URL.Path[1:]
+
+	sub, ok := h.Substrates[key]
+	if !ok {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		h.log.Error("Substrate not found", zap.String("key", key))
+		return
+	}
+
+	h.log.Info("Substrate", zap.Any("sub", sub), zap.String("key", sub.Key()))
+
+	sub.Order = Order{}
+	if err := json.NewDecoder(r.Body).Decode(&sub.Order); err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		h.log.Error("Error unmarshalling order", zap.Error(err))
+		return
+	}
 }
 
 func (h *App) Start() error {

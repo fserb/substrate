@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
@@ -15,7 +16,6 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"go.uber.org/zap"
-	"golang.org/x/exp/rand"
 )
 
 const (
@@ -25,6 +25,7 @@ const (
 )
 
 func init() {
+	rand.Seed(time.Now().UnixNano())
 	caddy.RegisterModule(SubstrateHandler{})
 
 	httpcaddyfile.RegisterHandlerDirective("substrate", parseSubstrateHandler)
@@ -39,12 +40,19 @@ var (
 	_ caddyfile.Unmarshaler       = (*SubstrateHandler)(nil)
 )
 
+type Order struct {
+	TryFiles []string `json:"try_files,omitempty"`
+	Match    []string `json:"match,omitempty"`
+}
+
 type SubstrateHandler struct {
 	Command []string          `json:"command,omitempty"`
 	Env     map[string]string `json:"env,omitempty"`
 	User    string            `json:"user,omitempty"`
 	Dir     string            `json:"dir,omitempty"`
 	N       int               `json:"n,omitempty"`
+
+	Order Order `json:"-"`
 
 	keepRunning bool
 	cmd         *exec.Cmd
@@ -74,6 +82,7 @@ func (s *SubstrateHandler) Run() {
 	s.keepRunning = true
 	restartDelay := minRestartDelay
 
+	// Originally based on candy-supervisor
 	for s.keepRunning {
 		s.cmd = exec.Command(s.Command[0], s.Command[1:]...)
 		configureSysProcAttr(s.cmd)
@@ -108,7 +117,7 @@ func (s *SubstrateHandler) Run() {
 		// TODO: stdout stderr
 
 		if err != nil {
-			s.log.Error("Process exited")
+			s.log.Error("Process exited", zap.Error(err))
 		}
 
 		if err == nil || duration > resetRestartDelay {
