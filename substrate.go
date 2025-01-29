@@ -159,12 +159,13 @@ func (h *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h.log.Info("Substrate", zap.Any("sub", sub), zap.String("key", sub.Key()))
 
-	sub.Order = Order{}
-	if err := json.NewDecoder(r.Body).Decode(&sub.Order); err != nil {
+	var order Order
+	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		h.log.Error("Error unmarshalling order", zap.Error(err))
 		return
 	}
+	sub.UpdateOrder(order)
 }
 
 func (h *App) Start() error {

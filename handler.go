@@ -12,9 +12,12 @@ import (
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/caddy/v2/caddyconfig"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp/fileserver"
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp/rewrite"
 	"go.uber.org/zap"
 )
 
@@ -54,6 +57,7 @@ type SubstrateHandler struct {
 
 	Order Order `json:"-"`
 
+	route       caddyhttp.RouteList
 	keepRunning bool
 	cmd         *exec.Cmd
 	log         *zap.Logger
@@ -161,8 +165,65 @@ func (s *SubstrateHandler) cmdRunning() bool {
 	return s.cmd != nil && s.cmd.Process != nil && (s.cmd.ProcessState == nil || !s.cmd.ProcessState.Exited())
 }
 
+func (s *SubstrateHandler) JSON(val any) json.RawMessage {
+	out, err := json.Marshal(val)
+	if err != nil {
+		s.log.Warn("Error marshalling", zap.Error(err))
+		return nil
+	}
+	return out
+}
+
+func (s *SubstrateHandler) UpdateOrder(order Order) {
+	s.Order = order
+
+	routes := caddyhttp.RouteList{}
+
+	if len(order.TryFiles) > 0 {
+		fmt.Printf("%v\n", order.TryFiles)
+
+		files := []string{"{http.request.uri.path}"}
+
+		for _, file := range order.TryFiles {
+			files = append(files, "{http.request.uri.path}"+file)
+		}
+
+		fmt.Printf("%v\n", files)
+
+		rewriteMatcherSet := caddy.ModuleMap{
+			"file": s.JSON(fileserver.MatchFile{
+				TryFiles: []string{"{http.request.uri.path}",
+					"{http.request.uri.path}/index.md",
+					"index.md"},
+				TryPolicy: "first_exist_fallback",
+			}),
+		}
+
+		rewriteHandler := rewrite.Rewrite{
+			URI: "{http.matchers.file.relative}",
+		}
+
+		rewriteRoute := caddyhttp.Route{
+			MatcherSetsRaw: []caddy.ModuleMap{rewriteMatcherSet},
+			HandlersRaw:    []json.RawMessage{caddyconfig.JSONModuleObject(rewriteHandler, "handler", "rewrite", nil)},
+		}
+
+		routes = append(routes, rewriteRoute)
+	}
+
+	// proxyMatcherSet := caddy.ModuleMap{
+	// 	"path": h.JSON(order.Match),
+	// }
+	//
+	fmt.Printf("%v\n", routes)
+	s.route = routes
+}
+
 func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	return next.ServeHTTP(w, r)
+	if len(s.route) == 0 {
+		return next.ServeHTTP(w, r)
+	}
+	return s.route.Compile(next).ServeHTTP(w, r)
 }
 
 func (s *SubstrateHandler) Provision(ctx caddy.Context) error {

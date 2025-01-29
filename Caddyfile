@@ -3,7 +3,7 @@
 	substrate
 }
 
-test:80 {
+:4321 {
 	root .
 	substrate {
 		command deno run -A example.js
