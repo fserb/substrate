@@ -11,44 +11,41 @@ import (
 )
 
 func init() {
-	caddy.RegisterModule(SubstrateMiddleware{})
-	httpcaddyfile.RegisterHandlerDirective("substrate", parseSubstrateMiddleware)
-	httpcaddyfile.RegisterDirectiveOrder("substrate", httpcaddyfile.Before, "invoke")
+	caddy.RegisterModule(SubstrateHandler{})
 
+	httpcaddyfile.RegisterHandlerDirective("substrate", parseSubstrateHandler)
+	httpcaddyfile.RegisterDirectiveOrder("substrate", httpcaddyfile.Before, "invoke")
 }
 
 // Interface guards
 var (
-	_ caddy.Module                = (*SubstrateMiddleware)(nil)
-	_ caddy.Provisioner           = (*SubstrateMiddleware)(nil)
-	_ caddyhttp.MiddlewareHandler = (*SubstrateMiddleware)(nil)
-	_ caddyfile.Unmarshaler       = (*SubstrateMiddleware)(nil)
+	_ caddy.Module                = (*SubstrateHandler)(nil)
+	_ caddy.Provisioner           = (*SubstrateHandler)(nil)
+	_ caddyhttp.MiddlewareHandler = (*SubstrateHandler)(nil)
+	_ caddyfile.Unmarshaler       = (*SubstrateHandler)(nil)
 )
 
-type SubstrateMiddleware struct {
-	ID      string            `json:"@id,omitempty"`
+type SubstrateHandler struct {
 	Command []string          `json:"command,omitempty"`
 	Env     map[string]string `json:"env,omitempty"`
 	User    string            `json:"user,omitempty"`
 
-	matcherSet caddy.ModuleMap `json:"match,omitempty"`
-
 	log *zap.Logger
 }
 
-func (s SubstrateMiddleware) CaddyModule() caddy.ModuleInfo {
+func (s SubstrateHandler) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
 		ID:  "http.handlers.substrate",
-		New: func() caddy.Module { return new(SubstrateMiddleware) },
+		New: func() caddy.Module { return new(SubstrateHandler) },
 	}
 }
 
-func (s SubstrateMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	return nil
 	// return next.ServeHTTP(w, r)
 }
 
-func (s *SubstrateMiddleware) Provision(ctx caddy.Context) error {
+func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 	s.log = ctx.Logger(s)
 
 	app, err := ctx.App("substrate")
@@ -61,16 +58,20 @@ func (s *SubstrateMiddleware) Provision(ctx caddy.Context) error {
 	return nil
 }
 
-func (s *SubstrateMiddleware) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
+// Syntax:
+//
+//		substrate {
+//		  command <cmdline>
+//	    env <key> <value>
+//	    user <username>
+//		 	restart_policy always
+//			redirect_stdout stdout
+//		  redirect_stderr stderr
+//		}
+func (s *SubstrateHandler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 	var h httpcaddyfile.Helper = httpcaddyfile.Helper{Dispenser: d}
+
 	h.Next() // consume directive name
-	matcherSet, err := h.ExtractMatcherSet()
-	if err != nil {
-		return err
-	}
-	h.Next() // consume the directive name again (matcher parsing resets)
-	s.matcherSet = matcherSet
-	s.ID = "HELLO"
 
 	for h.NextBlock(0) {
 		switch h.Val() {
@@ -102,18 +103,8 @@ func (s *SubstrateMiddleware) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 	return nil
 }
 
-// Syntax:
-//
-//		substrate <match> {
-//		  command <cmdline>
-//	    env <key> <value>
-//	    user <username>
-//		 	restart_policy always
-//			redirect_stdout stdout
-//		  redirect_stderr stderr
-//		}
-func parseSubstrateMiddleware(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
-	var sm SubstrateMiddleware
+func parseSubstrateHandler(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
+	var sm SubstrateHandler
 	return &sm, sm.UnmarshalCaddyfile(h.Dispenser)
 }
 

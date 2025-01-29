@@ -1,12 +1,13 @@
 {
-	admin :2020
+	admin localhost:2020
 	substrate
 }
 
 test:80 {
 	root .
-	substrate / {
+	substrate {
 		command ls
 		user fserb
 	}
+	file_server
 }
