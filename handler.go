@@ -55,12 +55,21 @@ type Order struct {
 	Match    []string `json:"match,omitempty"`
 }
 
+type outputTarget struct {
+	// Type can be null, stdout, stderr, or file.
+	Type string `json:"type,omitempty"`
+	File string `json:"file,omitempty"`
+}
+
 type SubstrateHandler struct {
-	Command []string          `json:"command,omitempty"`
-	Env     map[string]string `json:"env,omitempty"`
-	User    string            `json:"user,omitempty"`
-	Dir     string            `json:"dir,omitempty"`
-	N       int               `json:"n,omitempty"`
+	Command        []string          `json:"command,omitempty"`
+	Env            map[string]string `json:"env,omitempty"`
+	User           string            `json:"user,omitempty"`
+	Dir            string            `json:"dir,omitempty"`
+	RedirectStdout *outputTarget     `json:"redirect_stdout,omitempty"`
+	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
+
+	N int `json:"n,omitempty"`
 
 	Order *Order `json:"-"`
 
@@ -110,9 +119,25 @@ func (s *SubstrateHandler) Run() {
 		s.cmd.Dir = s.Dir
 
 		// TODO: stdout stderr
+		var openFiles []*os.File
+
+		outFile, err := getRedirectFile(s.RedirectStdout)
+		if err != nil {
+			s.log.Error("Error opening process stdout", zap.Error(err))
+			outFile = nil
+		}
+		errFile, err := getRedirectFile(s.RedirectStderr)
+		if err != nil {
+			s.log.Error("Error opening process stderr", zap.Error(err))
+			errFile = nil
+		}
+
+		s.cmd.Stdout = outFile
+		s.cmd.Stderr = errFile
+		openFiles = append(openFiles, outFile, errFile)
 
 		start := time.Now()
-		err := s.cmd.Start()
+		err = s.cmd.Start()
 
 		if err != nil {
 			s.log.Error("Error starting command", zap.Error(err))
@@ -125,7 +150,11 @@ func (s *SubstrateHandler) Run() {
 
 		duration := time.Now().Sub(start)
 
-		// TODO: stdout stderr
+		for _, f := range openFiles {
+			if f != nil && f != os.Stdout && f != os.Stderr {
+				f.Close()
+			}
+		}
 
 		if err != nil {
 			s.log.Error("Process exited", zap.Error(err))
@@ -143,6 +172,20 @@ func (s *SubstrateHandler) Run() {
 			}
 		}
 	}
+}
+
+func getRedirectFile(target *outputTarget) (*os.File, error) {
+	switch target.Type {
+	case "stdout":
+		return os.Stdout, nil
+	case "stderr":
+		return os.Stderr, nil
+	case "null":
+		return nil, nil
+	case "file":
+		return os.OpenFile(target.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	}
+	return nil, fmt.Errorf("Invalid redirect target: %s", target.Type)
 }
 
 func (s *SubstrateHandler) Stop() {
@@ -285,9 +328,51 @@ func (s *SubstrateHandler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				return h.ArgErr()
 			}
 			s.Dir = dir
+		case "redirect_stdout":
+			target, err := parseRedirect(h)
+			if err != nil {
+				return err
+			}
+			s.RedirectStdout = target
+		case "redirect_stderr":
+			target, err := parseRedirect(h)
+			if err != nil {
+				return err
+			}
+			s.RedirectStderr = target
 		}
 	}
+
+	if s.RedirectStdout == nil {
+		s.RedirectStdout = &outputTarget{Type: "stdout"}
+	}
+	if s.RedirectStderr == nil {
+		s.RedirectStderr = &outputTarget{Type: "stderr"}
+	}
+
 	return nil
+}
+
+func parseRedirect(h httpcaddyfile.Helper) (*outputTarget, error) {
+	if !h.NextArg() {
+		return nil, h.ArgErr()
+	}
+
+	var target outputTarget
+	target.Type = h.Val()
+
+	switch target.Type {
+	case "stdout", "null", "stderr":
+		return &target, nil
+	case "file":
+		if !h.NextArg() {
+			return nil, h.ArgErr()
+		}
+		target.File = h.Val()
+		return &target, nil
+	}
+
+	return nil, h.Errf("Invalid redirect target: %s", target.Type)
 }
 
 func parseSubstrateHandler(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
