@@ -68,6 +68,7 @@ type SubstrateHandler struct {
 	Dir            string            `json:"dir,omitempty"`
 	RedirectStdout *outputTarget     `json:"redirect_stdout,omitempty"`
 	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
+	RestartPolicy  string            `json:"restart_policy,omitempty"`
 
 	N int `json:"n,omitempty"`
 
@@ -158,6 +159,14 @@ func (s *SubstrateHandler) Run() {
 
 		if err != nil {
 			s.log.Error("Process exited", zap.Error(err))
+		}
+
+		if s.RestartPolicy == "never" {
+			break
+		}
+
+		if s.RestartPolicy == "on_failure" && err == nil {
+			break
 		}
 
 		if err == nil || duration > resetRestartDelay {
@@ -288,8 +297,8 @@ func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 //	    user <username>
 //			dir <directory>
 //
-//		 	restart_policy always
-//			redirect_stdout stdout
+//		 	restart_policy always|never|on_failure
+//			redirect_stdout stdout|stderr|null|file <filename>
 //		  redirect_stderr stderr
 //		}
 func (s *SubstrateHandler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
@@ -340,6 +349,15 @@ func (s *SubstrateHandler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				return err
 			}
 			s.RedirectStderr = target
+		case "restart_policy":
+			var p string
+			if !h.Args(&p) {
+				return h.ArgErr()
+			}
+			if p != "always" && p != "never" && p != "on_failure" {
+				return h.Errf("Invalid restart policy: %s", p)
+			}
+			s.RestartPolicy = p
 		}
 	}
 
