@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
@@ -17,6 +18,7 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp/fileserver"
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp/rewrite"
 	"go.uber.org/zap"
 )
@@ -31,8 +33,11 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 	caddy.RegisterModule(SubstrateHandler{})
 
-	httpcaddyfile.RegisterHandlerDirective("substrate", parseSubstrateHandler)
+	httpcaddyfile.RegisterHandlerDirective("_substrate", parseSubstrateHandler)
+	httpcaddyfile.RegisterDirectiveOrder("_substrate", httpcaddyfile.Before, "invoke")
+	httpcaddyfile.RegisterDirective("substrate", parseSubstrateDirective)
 	httpcaddyfile.RegisterDirectiveOrder("substrate", httpcaddyfile.Before, "invoke")
+
 }
 
 // Interface guards
@@ -44,6 +49,7 @@ var (
 )
 
 type Order struct {
+	Host     string   `json:"host,omitempty"`
 	TryFiles []string `json:"try_files,omitempty"`
 	Match    []string `json:"match,omitempty"`
 }
@@ -57,6 +63,7 @@ type SubstrateHandler struct {
 
 	Order Order `json:"-"`
 
+	rph         *reverseproxy.Handler
 	route       caddyhttp.RouteList
 	keepRunning bool
 	cmd         *exec.Cmd
@@ -180,7 +187,7 @@ func (s *SubstrateHandler) UpdateOrder(order Order) {
 	routes := caddyhttp.RouteList{}
 
 	if len(order.TryFiles) > 0 {
-		fmt.Printf("%v\n", order.TryFiles)
+		fmt.Printf("TRYFILES %v\n", order.TryFiles)
 
 		files := []string{"{http.request.uri.path}"}
 
@@ -188,7 +195,7 @@ func (s *SubstrateHandler) UpdateOrder(order Order) {
 			files = append(files, "{http.request.uri.path}"+file)
 		}
 
-		fmt.Printf("%v\n", files)
+		fmt.Printf("FILES %v\n", files)
 
 		rewriteMatcherSet := caddy.ModuleMap{
 			"file": s.JSON(fileserver.MatchFile{
@@ -205,31 +212,49 @@ func (s *SubstrateHandler) UpdateOrder(order Order) {
 
 		rewriteRoute := caddyhttp.Route{
 			MatcherSetsRaw: []caddy.ModuleMap{rewriteMatcherSet},
-			HandlersRaw:    []json.RawMessage{caddyconfig.JSONModuleObject(rewriteHandler, "handler", "rewrite", nil)},
+			HandlersRaw: []json.RawMessage{caddyconfig.JSONModuleObject(rewriteHandler,
+				"handler", "rewrite", nil)},
 		}
 
 		routes = append(routes, rewriteRoute)
 	}
 
-	// proxyMatcherSet := caddy.ModuleMap{
-	// 	"path": h.JSON(order.Match),
-	// }
-	//
-	fmt.Printf("%v\n", routes)
 	s.route = routes
 }
 
 func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	if len(s.route) == 0 {
-		return next.ServeHTTP(w, r)
-	}
-	return s.route.Compile(next).ServeHTTP(w, r)
+	repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
+	repl.Map(func(key string) (any, bool) {
+		if len(key) < 22 || key[:22] != "substrate.match_files." {
+			return nil, false
+		}
+		number, err := strconv.Atoi(key[22:])
+		if err != nil || number < 0 || number >= len(s.Order.TryFiles) {
+			return nil, false
+		}
+		return s.Order.TryFiles[number], true
+	})
+
+	// return s.route.Compile(next).ServeHTTP(w, r)
+	return next.ServeHTTP(w, r)
 }
 
 func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 	s.log = ctx.Logger(s).With(zap.Strings("cmd", s.Command))
 
 	s.N = rand.Int()
+
+	// rp, err := caddy.GetModule("http.handlers.reverse_proxy")
+	// if err != nil {
+	// return err
+	// }
+	// obj := rp.New()
+
+	// ctx := caddy.NewContext(r.Context())
+	// rph := obj.(*reverseproxy.Handler)
+	// rph.Provision(ctx)
+	// s.rph = rph
+	// fmt.Println("RPH", rph)
 
 	app, err := ctx.App("substrate")
 	if err != nil {
@@ -297,5 +322,54 @@ func (s *SubstrateHandler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 func parseSubstrateHandler(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
 	var sm SubstrateHandler
 	return &sm, sm.UnmarshalCaddyfile(h.Dispenser)
+}
+
+func parseSubstrateDirective(h httpcaddyfile.Helper) ([]httpcaddyfile.ConfigValue, error) {
+	routes := caddyhttp.RouteList{}
+
+	substrateHandler := SubstrateHandler{}
+	substrateHandler.UnmarshalCaddyfile(h.Dispenser)
+
+	substrateRoute := caddyhttp.Route{
+		HandlersRaw: []json.RawMessage{caddyconfig.JSONModuleObject(substrateHandler, "handler", "substrate", nil)},
+	}
+
+	routes = append(routes, substrateRoute)
+
+	files := []string{"{http.request.uri.path}"}
+
+	for i := range 64 {
+		files = append(files, fmt.Sprintf("{http.request.uri.path}{substrate.match_files.%d}", i))
+	}
+
+	rewriteMatcherSet := caddy.ModuleMap{
+		"file": h.JSON(fileserver.MatchFile{
+			TryFiles:  files,
+			TryPolicy: "first_exist",
+		}),
+	}
+
+	rewriteHandler := rewrite.Rewrite{
+		URI: "{http.matchers.file.relative}",
+	}
+
+	rewriteRoute := caddyhttp.Route{
+		MatcherSetsRaw: []caddy.ModuleMap{rewriteMatcherSet},
+		HandlersRaw: []json.RawMessage{caddyconfig.JSONModuleObject(rewriteHandler,
+			"handler", "rewrite", nil)},
+	}
+
+	routes = append(routes, rewriteRoute)
+
+	subroute := caddyhttp.Subroute{
+		Routes: routes,
+	}
+
+	return []httpcaddyfile.ConfigValue{
+		{
+			Class: "route",
+			Value: subroute,
+		},
+	}, nil
 }
 
