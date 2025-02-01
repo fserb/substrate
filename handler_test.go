@@ -2,132 +2,309 @@ package substrate
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
+	"testing/fstest"
+	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
-	"go.uber.org/zap/zaptest"
 )
 
-func TestUpdateOrderSorting(t *testing.T) {
-	sh := &SubstrateHandler{}
-	sh.log = zaptest.NewLogger(t)
-	order := Order{
-		TryFiles: []string{"a", "abc", "zz", "ab"},
-		Match:    []string{"z", "xy", "x"},
+// fakeFileSystems implements the FileSystems interface.
+type fakeFileSystems struct {
+	m map[string]fs.FS
+}
+
+func (ffs *fakeFileSystems) Register(k string, v fs.FS) {
+	if ffs.m == nil {
+		ffs.m = make(map[string]fs.FS)
 	}
-	sh.UpdateOrder(order)
-	expected := []string{"abc", "ab", "zz", "a"}
-	for i, v := range sh.Order.TryFiles {
-		if v != expected[i] {
-			t.Errorf("TryFiles[%d]: expected %s, got %s", i, expected[i], v)
-		}
+	ffs.m[k] = v
+}
+
+func (ffs *fakeFileSystems) Unregister(k string) {
+	delete(ffs.m, k)
+}
+
+func (ffs *fakeFileSystems) Get(k string) (fs.FS, bool) {
+	v, ok := ffs.m[k]
+	return v, ok
+}
+
+func (ffs *fakeFileSystems) Default() fs.FS {
+	for _, v := range ffs.m {
+		return v
+	}
+	return nil
+}
+
+// Dummy next handler for middleware chain.
+type dummyHandler struct {
+	called bool
+	check  func(r *http.Request)
+}
+
+func (d *dummyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
+	d.called = true
+	if d.check != nil {
+		d.check(r)
+	}
+	return nil
+}
+
+func TestServeHTTPWithoutOrder(t *testing.T) {
+	sh := &SubstrateHandler{log: zap.NewNop()}
+	// Order is nil.
+	next := &dummyHandler{}
+	rr := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Provide a replacer in context.
+	repl := caddy.NewReplacer()
+	ctx := context.WithValue(req.Context(), caddy.ReplacerCtxKey, repl)
+	req = req.WithContext(ctx)
+
+	// Expect ServeHTTP to write a 500 since Order is nil.
+	if err := sh.ServeHTTP(rr, req, next); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", rr.Code)
+	}
+	if next.called {
+		t.Error("next handler should not be called when Order is nil")
 	}
 }
 
-func TestKeyNotEmpty(t *testing.T) {
-	sh := &SubstrateHandler{Command: []string{"echo", "hello"}}
-	sh.log = zaptest.NewLogger(t)
-	if key := sh.Key(); key == "" {
-		t.Error("key should not be empty")
+func TestServeHTTPWithOrder(t *testing.T) {
+	// Set up a SubstrateHandler with an Order.
+	sh := &SubstrateHandler{
+		Order: &Order{
+			Host:     "http://localhost:1234",
+			TryFiles: []string{"/index.html"},
+			Match:    []string{".html"},
+		},
+		log: zap.NewNop(),
+	}
+	// Create a fake file system with a file at "/foo/index.html".
+	testFS := fstest.MapFS{
+		"foo/index.html": &fstest.MapFile{Data: []byte("content")},
+	}
+	ffs := &fakeFileSystems{}
+	ffs.Register("", testFS)
+	sh.fsmap = ffs
+
+	// Prepare a replacer with required variables.
+	repl := caddy.NewReplacer()
+	repl.Set("http.vars.root", ".")
+	repl.Set("http.vars.fs", "")
+
+	req, err := http.NewRequest("GET", "/foo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(req.Context(), caddy.ReplacerCtxKey, repl)
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+
+	next := &dummyHandler{
+		check: func(r *http.Request) {
+			// Expect the URL path to be updated to "/foo/index.html"
+			if r.URL.Path != "/foo/index.html" {
+				t.Errorf("expected URL path '/foo/index.html', got %s", r.URL.Path)
+			}
+			// Header should indicate the original path.
+			if got := r.Header.Get("X-Forwarded-Path"); got != "/foo" {
+				t.Errorf("expected X-Forwarded-Path '/foo', got %s", got)
+			}
+		},
+	}
+
+	if err := sh.ServeHTTP(rr, req, next); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if !next.called {
+		t.Error("next handler was not called")
+	}
+	// Check that reverse proxy enabling set the substrate.host variable.
+	if val, _ := repl.Get("substrate.host"); val != "http://localhost:1234" {
+		t.Errorf("expected replacer 'substrate.host' to be 'http://localhost:1234', got %s", val)
 	}
 }
 
 func TestUnmarshalCaddyfile(t *testing.T) {
-	cfile := `substrate {
-		command sleep 10
-		env KEY value
-		user nobody
-		dir /tmp
-		restart_policy always
-		redirect_stdout file /tmp/out.log
-		redirect_stderr stderr
-	}`
-	d := caddyfile.NewTestDispenser(cfile)
-	var sh SubstrateHandler
-	sh.log = zaptest.NewLogger(t)
+	caddyfileInput := `
+	substrate {
+	    command /bin/echo hello world
+	    env FOO bar
+	    user testuser
+	    dir /tmp
+	    restart_policy always
+	    redirect_stdout file /tmp/stdout.log
+	    redirect_stderr stderr
+	}
+	`
+	d := caddyfile.NewTestDispenser(caddyfileInput)
+	sh := &SubstrateHandler{}
 	if err := sh.UnmarshalCaddyfile(d); err != nil {
-		t.Fatal(err)
+		t.Fatalf("UnmarshalCaddyfile failed: %v", err)
 	}
-	if len(sh.Command) == 0 || sh.Command[0] != "sleep" {
-		t.Error("command not parsed correctly")
+
+	if len(sh.Command) < 1 || sh.Command[0] != "/bin/echo" {
+		t.Errorf("unexpected command: %v", sh.Command)
 	}
-	if sh.Env["KEY"] != "value" {
-		t.Error("env not parsed correctly")
+	if val, ok := sh.Env["FOO"]; !ok || val != "bar" {
+		t.Errorf("unexpected env: %v", sh.Env)
 	}
-	if sh.User != "nobody" {
-		t.Error("user not parsed correctly")
+	if sh.User != "testuser" {
+		t.Errorf("unexpected user: %s", sh.User)
 	}
 	if sh.Dir != "/tmp" {
-		t.Error("dir not parsed correctly")
+		t.Errorf("unexpected dir: %s", sh.Dir)
 	}
 	if sh.RestartPolicy != "always" {
-		t.Error("restart_policy not parsed correctly")
+		t.Errorf("unexpected restart policy: %s", sh.RestartPolicy)
 	}
-	if sh.RedirectStdout == nil || sh.RedirectStdout.Type != "file" || sh.RedirectStdout.File != "/tmp/out.log" {
-		t.Error("redirect_stdout not parsed correctly")
+	if sh.RedirectStdout == nil || sh.RedirectStdout.Type != "file" || sh.RedirectStdout.File != "/tmp/stdout.log" {
+		t.Errorf("unexpected redirect_stdout: %+v", sh.RedirectStdout)
 	}
 	if sh.RedirectStderr == nil || sh.RedirectStderr.Type != "stderr" {
-		t.Error("redirect_stderr not parsed correctly")
+		t.Errorf("unexpected redirect_stderr: %+v", sh.RedirectStderr)
 	}
 }
 
 func TestGetRedirectFile(t *testing.T) {
-	// Test stdout
-	f, err := getRedirectFile(&outputTarget{Type: "stdout"})
-	if err != nil || f != os.Stdout {
-		t.Error("stdout redirect failed")
+	// Test stdout.
+	target := &outputTarget{Type: "stdout"}
+	f, err := getRedirectFile(target)
+	if err != nil {
+		t.Errorf("getRedirectFile(stdout) error: %v", err)
 	}
-	// Test stderr
-	f, err = getRedirectFile(&outputTarget{Type: "stderr"})
-	if err != nil || f != os.Stderr {
-		t.Error("stderr redirect failed")
+	if f != os.Stdout {
+		t.Error("expected os.Stdout for stdout target")
 	}
-	// Test null
-	f, err = getRedirectFile(&outputTarget{Type: "null"})
-	if err != nil || f != nil {
-		t.Error("null redirect failed")
+
+	// Test stderr.
+	target = &outputTarget{Type: "stderr"}
+	f, err = getRedirectFile(target)
+	if err != nil {
+		t.Errorf("getRedirectFile(stderr) error: %v", err)
 	}
-	// Test file (using a temporary file)
-	tempFile := "temp_test.log"
-	defer os.Remove(tempFile)
-	f, err = getRedirectFile(&outputTarget{Type: "file", File: tempFile})
-	if err != nil || f == nil {
-		t.Error("file redirect failed")
+	if f != os.Stderr {
+		t.Error("expected os.Stderr for stderr target")
+	}
+
+	// Test null.
+	target = &outputTarget{Type: "null"}
+	f, err = getRedirectFile(target)
+	if err != nil {
+		t.Errorf("getRedirectFile(null) error: %v", err)
+	}
+	if f != nil {
+		t.Error("expected nil for null target")
+	}
+
+	// Test file.
+	tmpfile := filepath.Join(os.TempDir(), fmt.Sprintf("test_redirect_%d.log", time.Now().UnixNano()))
+	target = &outputTarget{Type: "file", File: tmpfile}
+	f, err = getRedirectFile(target)
+	if err != nil {
+		t.Errorf("getRedirectFile(file) error: %v", err)
+	}
+	if f == nil {
+		t.Error("expected non-nil file for file target")
 	}
 	f.Close()
+	os.Remove(tmpfile)
+
+	// Test invalid type.
+	target = &outputTarget{Type: "invalid"}
+	_, err = getRedirectFile(target)
+	if err == nil {
+		t.Error("expected error for invalid redirect target")
+	}
 }
 
-func TestSubstrateHandlerMiddleware_NoOrder(t *testing.T) {
-	sh := &SubstrateHandler{}
-	sh.log = zaptest.NewLogger(t)
-	// No order set
+func TestUpdateOrder(t *testing.T) {
+	sh := &SubstrateHandler{log: zap.NewNop()}
+	order := Order{
+		TryFiles: []string{"/a", "/abc", "/ab", "/abcd", "/ab2"},
+	}
+	sh.UpdateOrder(order)
+	sorted := sh.Order.TryFiles
+	// Expected sort: first by descending length, then lexicographically.
+	expected := []string{"/abcd", "/ab2", "/abc", "/ab", "/a"}
+	if len(sorted) != len(expected) {
+		t.Fatalf("expected %d try_files, got %d", len(expected), len(sorted))
+	}
+	// Ensure sorting is as expected.
+	if !equalSlices(sorted, expected) {
+		t.Errorf("sorted try_files: got %v, expected %v", sorted, expected)
+	}
+}
 
-	called := false
-	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-		called = true
-		return nil
-	})
+func TestKeyNotEmpty(t *testing.T) {
+	sh := &SubstrateHandler{
+		Command:        []string{"echo", "hello"},
+		Env:            map[string]string{"FOO": "bar"},
+		User:           "testuser",
+		Dir:            "/tmp",
+		RedirectStdout: &outputTarget{Type: "stdout"},
+		RedirectStderr: &outputTarget{Type: "stderr"},
+		RestartPolicy:  "always",
+		log:            zap.NewNop(),
+	}
+	key := sh.Key()
+	if key == "" {
+		t.Error("expected non-empty key")
+	}
+	// Ensure key is a valid hex string.
+	if _, err := hexDecode(key); err != nil {
+		t.Errorf("key is not valid hex: %v", err)
+	}
+}
 
-	req := httptest.NewRequest("GET", "/", nil)
-	// Set a replacer in the context
-	repl := caddy.NewReplacer()
-	req = req.WithContext(context.WithValue(req.Context(), caddy.ReplacerCtxKey, repl))
-	rw := httptest.NewRecorder()
+// equalSlices compares two string slices.
+func equalSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
 
-	err := sh.ServeHTTP(rw, req, next)
+// hexDecode verifies that the provided string is valid hex.
+func hexDecode(s string) ([]byte, error) {
+	if len(s)%2 != 0 {
+		return nil, errors.New("invalid hex string length")
+	}
+	b := make([]byte, len(s)/2)
+	_, err := fmt.Sscanf(s, "%x", &b)
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		return nil, err
 	}
-	if called {
-		t.Error("next handler should not be called when order is nil")
-	}
-	if rw.Code != http.StatusInternalServerError {
-		t.Errorf("expected status 500, got %d", rw.Code)
-	}
+	return b, nil
+}
+
+// Adapt caddyhttp.Handler to our dummyHandler.
+type handlerFunc func(w http.ResponseWriter, r *http.Request) error
+
+func (f handlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
+	return f(w, r)
 }
 
