@@ -2,12 +2,13 @@ package substrate
 
 import (
 	"context"
-	"errors"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -220,7 +221,7 @@ func TestUpdateOrder(t *testing.T) {
 		t.Fatalf("expected %d try_files, got %d", len(expected), len(sorted))
 	}
 	// Ensure sorting is as expected.
-	if !equalSlices(sorted, expected) {
+	if !slices.Equal(sorted, expected) {
 		t.Errorf("sorted try_files: got %v, expected %v", sorted, expected)
 	}
 }
@@ -241,41 +242,8 @@ func TestKeyNotEmpty(t *testing.T) {
 		t.Error("expected non-empty key")
 	}
 	// Ensure key is a valid hex string.
-	if _, err := hexDecode(key); err != nil {
+	if _, err := hex.DecodeString(key); err != nil {
 		t.Errorf("key is not valid hex: %v", err)
 	}
-}
-
-// equalSlices compares two string slices.
-func equalSlices(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
-// hexDecode verifies that the provided string is valid hex.
-func hexDecode(s string) ([]byte, error) {
-	if len(s)%2 != 0 {
-		return nil, errors.New("invalid hex string length")
-	}
-	b := make([]byte, len(s)/2)
-	_, err := fmt.Sscanf(s, "%x", &b)
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
-}
-
-// Adapt caddyhttp.Handler to our dummyHandler.
-type handlerFunc func(w http.ResponseWriter, r *http.Request) error
-
-func (f handlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
-	return f(w, r)
 }
 
