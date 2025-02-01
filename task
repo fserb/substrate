@@ -12,6 +12,12 @@ function build {
   CGO_ENABLED=0 go build -v -o caddy ./main
 }
 
+function test {
+  CGO_ENABLED=0 go test . "$@"
+}
+
+
+
 function complexity {
   IGNORE="" compl complexity "$@"
 }
