@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,34 +17,6 @@ import (
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 )
-
-// fakeFileSystems implements the FileSystems interface.
-type fakeFileSystems struct {
-	m map[string]fs.FS
-}
-
-func (ffs *fakeFileSystems) Register(k string, v fs.FS) {
-	if ffs.m == nil {
-		ffs.m = make(map[string]fs.FS)
-	}
-	ffs.m[k] = v
-}
-
-func (ffs *fakeFileSystems) Unregister(k string) {
-	delete(ffs.m, k)
-}
-
-func (ffs *fakeFileSystems) Get(k string) (fs.FS, bool) {
-	v, ok := ffs.m[k]
-	return v, ok
-}
-
-func (ffs *fakeFileSystems) Default() fs.FS {
-	for _, v := range ffs.m {
-		return v
-	}
-	return nil
-}
 
 // Dummy next handler for middleware chain.
 type dummyHandler struct {
@@ -101,7 +72,7 @@ func TestServeHTTPWithOrder(t *testing.T) {
 	testFS := fstest.MapFS{
 		"foo/index.html": &fstest.MapFile{Data: []byte("content")},
 	}
-	ffs := &fakeFileSystems{}
+	ffs := (&caddy.Context{}).Filesystems()
 	ffs.Register("", testFS)
 	sh.fsmap = ffs
 
