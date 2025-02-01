@@ -1,6 +1,7 @@
 package substrate
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/hex"
@@ -19,7 +20,6 @@ import (
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy"
 	"go.uber.org/zap"
 )
 
@@ -66,11 +66,10 @@ type SubstrateHandler struct {
 
 	Order *Order `json:"-"`
 
-	rph         *reverseproxy.Handler
-	keepRunning bool
-	cmd         *exec.Cmd
-	log         *zap.Logger
-	app         *App
+	cancel context.CancelFunc
+
+	log *zap.Logger
+	app *App
 }
 
 func (s SubstrateHandler) CaddyModule() caddy.ModuleInfo {
@@ -91,87 +90,107 @@ func (s *SubstrateHandler) Key() string {
 	return hex.EncodeToString(hash[:])
 }
 
+func (s *SubstrateHandler) newCmd() *exec.Cmd {
+	cmd := exec.Command(s.Command[0], s.Command[1:]...)
+	configureSysProcAttr(cmd)
+
+	env := os.Environ()
+	for key, value := range s.Env {
+		env = append(env, fmt.Sprintf("%s=%s", key, value))
+	}
+	env = append(env, fmt.Sprintf("SUBSTRATE=%s/%s", s.app.Host, s.Key()))
+	cmd.Env = env
+
+	configureExecutingUser(cmd, s.User)
+
+	cmd.Dir = s.Dir
+
+	outFile, err := getRedirectFile(s.RedirectStdout)
+	if err != nil {
+		s.log.Error("Error opening process stdout", zap.Error(err))
+		outFile = nil
+	}
+	errFile, err := getRedirectFile(s.RedirectStderr)
+	if err != nil {
+		s.log.Error("Error opening process stderr", zap.Error(err))
+		errFile = nil
+	}
+
+	cmd.Stdout = outFile
+	cmd.Stderr = errFile
+
+	return cmd
+}
+
 func (s *SubstrateHandler) Run() {
-	s.keepRunning = true
-	restartDelay := minRestartDelay
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
+	delay := minRestartDelay
+	var cmd *exec.Cmd
 
-	// Originally based on candy-supervisor
-	for s.keepRunning {
-		s.cmd = exec.Command(s.Command[0], s.Command[1:]...)
-		configureSysProcAttr(s.cmd)
-
-		env := os.Environ()
-		for key, value := range s.Env {
-			env = append(env, fmt.Sprintf("%s=%s", key, value))
-		}
-		env = append(env, fmt.Sprintf("SUBSTRATE=%s/%s", s.app.Host, s.Key()))
-		s.cmd.Env = env
-
-		configureExecutingUser(s.cmd, s.User)
-
-		s.cmd.Dir = s.Dir
-
-		// TODO: stdout stderr
-		var openFiles []*os.File
-
-		outFile, err := getRedirectFile(s.RedirectStdout)
-		if err != nil {
-			s.log.Error("Error opening process stdout", zap.Error(err))
-			outFile = nil
-		}
-		errFile, err := getRedirectFile(s.RedirectStderr)
-		if err != nil {
-			s.log.Error("Error opening process stderr", zap.Error(err))
-			errFile = nil
-		}
-
-		s.cmd.Stdout = outFile
-		s.cmd.Stderr = errFile
-		openFiles = append(openFiles, outFile, errFile)
-
+cmdLoop:
+	for {
+		cmd = s.newCmd()
+		s.log.Info("Starting command", zap.String("command", s.Command[0]))
 		start := time.Now()
-		err = s.cmd.Start()
 
-		if err != nil {
-			s.log.Error("Error starting command", zap.Error(err))
-			break
+		if err := cmd.Start(); err != nil {
+			s.log.Error("Failed to start command", zap.Error(err))
+			break cmdLoop
 		}
 
-		s.log.Info("Started command", zap.String("command", s.Command[0]), zap.Int("pid", s.cmd.Process.Pid))
+		errCh := make(chan error, 1)
+		go func() { errCh <- cmd.Wait() }()
 
-		err = s.cmd.Wait()
-
-		duration := time.Now().Sub(start)
-
-		for _, f := range openFiles {
-			if f != nil && f != os.Stdout && f != os.Stderr {
-				f.Close()
+		select {
+		case err := <-errCh:
+			duration := time.Since(start)
+			if err != nil {
+				s.log.Error("Command exited with error", zap.Error(err))
 			}
-		}
-
-		if err != nil {
-			s.log.Error("Process exited", zap.Error(err))
-		}
-
-		if s.RestartPolicy == "never" {
-			break
-		}
-
-		if s.RestartPolicy == "on_failure" && err == nil {
-			break
-		}
-
-		if err == nil || duration > resetRestartDelay {
-			restartDelay = minRestartDelay
-		}
-		if err != nil && s.keepRunning {
-			s.log.Info("Restarting in", zap.Duration("delay", restartDelay))
-			time.Sleep(restartDelay)
-			restartDelay = 2 * restartDelay
-			if restartDelay > maxRestartDelay {
-				restartDelay = maxRestartDelay
+			if s.RestartPolicy == "never" || (s.RestartPolicy == "on_failure" && err == nil) {
+				break cmdLoop
 			}
+			if err == nil || duration > resetRestartDelay {
+				delay = minRestartDelay
+			}
+			s.log.Info("Restarting in", zap.Duration("delay", delay))
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				break cmdLoop
+			}
+			delay *= 2
+			if delay > maxRestartDelay {
+				delay = maxRestartDelay
+			}
+		case <-ctx.Done():
+			break cmdLoop
 		}
+	}
+
+	s.cancel = nil
+
+	if cmd == nil || cmd.Process == nil ||
+		(cmd.ProcessState != nil && cmd.ProcessState.Exited()) {
+		return
+	}
+
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		s.log.Error("Interrupt failed, killing process", zap.Error(err))
+		cmd.Process.Kill()
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		cmd.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		s.log.Error("Process did not exit in time, killing")
+		cmd.Process.Kill()
 	}
 }
 
@@ -190,30 +209,9 @@ func getRedirectFile(target *outputTarget) (*os.File, error) {
 }
 
 func (s *SubstrateHandler) Stop() {
-	s.keepRunning = false
-	if !s.cmdRunning() {
-		return
+	if s.cancel != nil {
+		s.cancel()
 	}
-
-	err := s.cmd.Process.Signal(os.Interrupt)
-	if err != nil {
-		s.log.Error("Error sending interrupt signal, killing.")
-		s.cmd.Process.Kill()
-		return
-	}
-
-	go func() {
-		time.Sleep(5 * time.Second)
-		if s.cmdRunning() {
-			s.log.Error("Process did not respond to interrupt, killing")
-			s.cmd.Process.Kill()
-		}
-	}()
-	s.cmd.Wait()
-}
-
-func (s *SubstrateHandler) cmdRunning() bool {
-	return s.cmd != nil && s.cmd.Process != nil && (s.cmd.ProcessState == nil || !s.cmd.ProcessState.Exited())
 }
 
 func (s *SubstrateHandler) JSON(val any) json.RawMessage {
