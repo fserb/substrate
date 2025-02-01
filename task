@@ -5,7 +5,7 @@ IFS=$'\n\t'
 DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 
 function run {
-  CGO_ENABLED=0 go run ./main run --config Caddyfile "$@"
+  CGO_ENABLED=0 go run ./main run --config example/Caddyfile "$@"
 }
 
 function build {

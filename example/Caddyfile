@@ -4,9 +4,9 @@
 }
 
 :4321 {
-	root .
+	root example/
 	substrate {
-		command deno run -A example.js
+		command deno run -A example/example.js
 	}
 
 	file_server

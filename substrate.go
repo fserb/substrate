@@ -165,6 +165,8 @@ func (h *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("Error unmarshalling order", zap.Error(err))
 		return
 	}
+
+	h.log.Info("Received order", zap.Any("order", order))
 	sub.UpdateOrder(order)
 }
 

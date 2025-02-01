@@ -19,8 +19,12 @@ func init() {
 	httpcaddyfile.RegisterDirectiveOrder("_substrate", httpcaddyfile.Before, "invoke")
 	httpcaddyfile.RegisterDirective("substrate", parseSubstrateDirective)
 	httpcaddyfile.RegisterDirectiveOrder("substrate", httpcaddyfile.Before, "invoke")
-
 }
+
+const (
+	maxTryFiles  = 32
+	maxMatchExts = 32
+)
 
 // Syntax:
 //
@@ -142,7 +146,7 @@ func parseSubstrateDirective(h httpcaddyfile.Helper) ([]httpcaddyfile.ConfigValu
 	routes = append(routes, substrateRoute)
 
 	files := []string{"{http.request.uri.path}"}
-	for i := range 32 {
+	for i := range maxTryFiles {
 		files = append(files, fmt.Sprintf("{http.request.uri.path}{substrate.match_files.%d}", i))
 	}
 	rewriteMatcherSet := caddy.ModuleMap{
@@ -162,7 +166,7 @@ func parseSubstrateDirective(h httpcaddyfile.Helper) ([]httpcaddyfile.ConfigValu
 	routes = append(routes, rewriteRoute)
 
 	paths := []string{}
-	for i := range 32 {
+	for i := range maxMatchExts {
 		paths = append(paths, fmt.Sprintf("{substrate.match_path.%d}", i))
 	}
 	reverseProxyMatcherSet := caddy.ModuleMap{

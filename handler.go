@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -225,6 +226,24 @@ func (s *SubstrateHandler) JSON(val any) json.RawMessage {
 }
 
 func (s *SubstrateHandler) UpdateOrder(order Order) {
+
+	if len(order.TryFiles) > maxTryFiles {
+		s.log.Error("Number of TryFiles exceeds maximum", zap.Int("count", len(order.TryFiles)),
+			zap.Int("max", maxTryFiles))
+	}
+	if len(order.Match) > maxMatchExts {
+		s.log.Error("Number of Matches exceeds maximum", zap.Int("count", len(order.Match)),
+			zap.Int("max", maxMatchExts))
+	}
+
+	// Sort TryFiles by reverse length, then lexicographically
+	sort.Slice(order.TryFiles, func(i, j int) bool {
+		if len(order.TryFiles[i]) != len(order.TryFiles[j]) {
+			return len(order.TryFiles[i]) > len(order.TryFiles[j])
+		}
+		return order.TryFiles[i] < order.TryFiles[j]
+	})
+
 	s.Order = &order
 }
 
