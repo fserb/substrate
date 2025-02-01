@@ -1,9 +1,9 @@
 package substrate
 
 import (
-	"fmt"
 	"io/fs"
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/caddyserver/caddy/v2"
@@ -11,12 +11,18 @@ import (
 )
 
 func (s *SubstrateHandler) fileExists(path string) bool {
+	isDir := false
+	if strings.HasSuffix(path, "/") {
+		path = path[:len(path)-1]
+		isDir = true
+	}
+
 	info, err := fs.Stat(s.fs, path)
 	if err != nil {
 		return false
 	}
 
-	if strings.HasSuffix(path, "/") {
+	if isDir {
 		return info.IsDir()
 	}
 	return !info.IsDir()
@@ -29,16 +35,36 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 		root = "."
 	}
 
-	path := r.URL.Path
+	reqPath := r.URL.Path
 
-	if s.fileExists(caddyhttp.SanitizedPathJoin(root, path)) {
-		return &path
+	if s.fileExists(caddyhttp.SanitizedPathJoin(root, reqPath)) {
+		return &reqPath
 	}
 
 	for _, suffix := range s.Order.TryFiles {
-		bigPath := path + suffix
+		bigPath := reqPath + suffix
 		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
 			return &bigPath
+		}
+	}
+
+	if len(s.Order.CatchAll) > 0 {
+		dir := reqPath
+		for {
+			for _, ca := range s.Order.CatchAll {
+				candidate := path.Join(dir, ca)
+				if s.fileExists(caddyhttp.SanitizedPathJoin(root, candidate)) {
+					return &candidate
+				}
+			}
+			if dir == "/" || dir == "." {
+				break
+			}
+			newDir := path.Dir(dir)
+			if newDir == dir {
+				break
+			}
+			dir = newDir
 		}
 	}
 
@@ -62,14 +88,12 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 	}
 
 	match := s.findBestResource(r)
-	fmt.Printf("match: %s (path %s)\n", *match, r.URL.Path)
 	if *match != r.URL.Path {
 		r.Header.Set("X-Forwarded-Path", r.URL.Path)
 		r.URL.Path = *match
 	}
 
 	if s.enableReverseProxy(r) {
-		fmt.Println("enableReverseProxy")
 		repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 		repl.Set("substrate.host", s.Order.Host)
 	}

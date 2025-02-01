@@ -39,10 +39,12 @@ var (
 	_ caddyhttp.MiddlewareHandler = (*SubstrateHandler)(nil)
 )
 
+// Those come from the child process.
 type Order struct {
 	Host     string   `json:"host,omitempty"`
 	TryFiles []string `json:"try_files,omitempty"`
 	Match    []string `json:"match,omitempty"`
+	CatchAll []string `json:"catch_all,omitempty"`
 }
 
 type outputTarget struct {

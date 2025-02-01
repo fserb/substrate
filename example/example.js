@@ -14,6 +14,7 @@ if (sub) {
       host: `:${PORT}`,
       try_files: ["/index.md", ".md"],
       match: [".md"],
+      catch_all: ["all.md"],
     }),
   });
 }
