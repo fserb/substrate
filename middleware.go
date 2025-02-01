@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
-	"path/filepath"
 	"strings"
 
 	"github.com/caddyserver/caddy/v2"
@@ -25,9 +24,17 @@ func (s *SubstrateHandler) fileExists(fileSystem fs.FS, path string) bool {
 }
 
 func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
-	repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
-	root := filepath.Clean(repl.ReplaceAll("{http.vars.root}", "."))
-	fsname := repl.ReplaceAll("{http.vars.fs}", "")
+	v := caddyhttp.GetVar(r.Context(), "root")
+	root, ok := v.(string)
+	if !ok {
+		root = "."
+	}
+	v = caddyhttp.GetVar(r.Context(), "fs")
+	fsname, ok := v.(string)
+	if !ok {
+		fsname = ""
+	}
+
 	fileSystem, ok := s.fsmap.Get(fsname)
 	if !ok {
 		s.log.Error("Use of unregistered filesystem", zap.String("fs", fsname))
