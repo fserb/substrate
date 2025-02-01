@@ -8,11 +8,10 @@ import (
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
-	"go.uber.org/zap"
 )
 
-func (s *SubstrateHandler) fileExists(fileSystem fs.FS, path string) bool {
-	info, err := fs.Stat(fileSystem, path)
+func (s *SubstrateHandler) fileExists(path string) bool {
+	info, err := fs.Stat(s.fs, path)
 	if err != nil {
 		return false
 	}
@@ -29,26 +28,16 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 	if !ok {
 		root = "."
 	}
-	v = caddyhttp.GetVar(r.Context(), "fs")
-	fsname, ok := v.(string)
-	if !ok {
-		fsname = ""
-	}
 
-	fileSystem, ok := s.fsmap.Get(fsname)
-	if !ok {
-		s.log.Error("Use of unregistered filesystem", zap.String("fs", fsname))
-		return nil
-	}
 	path := r.URL.Path
 
-	if s.fileExists(fileSystem, caddyhttp.SanitizedPathJoin(root, path)) {
+	if s.fileExists(caddyhttp.SanitizedPathJoin(root, path)) {
 		return &path
 	}
 
 	for _, suffix := range s.Order.TryFiles {
 		bigPath := path + suffix
-		if s.fileExists(fileSystem, caddyhttp.SanitizedPathJoin(root, bigPath)) {
+		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
 			return &bigPath
 		}
 	}

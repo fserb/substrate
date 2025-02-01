@@ -70,12 +70,9 @@ func TestServeHTTPWithOrder(t *testing.T) {
 		log: zap.NewNop(),
 	}
 	// Create a fake file system with a file at "/foo/index.html".
-	testFS := fstest.MapFS{
+	sh.fs = fstest.MapFS{
 		"foo/index.html": &fstest.MapFile{Data: []byte("content")},
 	}
-	ffs := (&caddy.Context{}).Filesystems()
-	ffs.Register("", testFS)
-	sh.fsmap = ffs
 
 	// Prepare a replacer with required variables.
 	repl := caddy.NewReplacer()

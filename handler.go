@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"math"
 	"math/big"
 	"os"
@@ -64,9 +65,9 @@ type SubstrateHandler struct {
 	Order *Order `json:"-"`
 
 	cancel context.CancelFunc
-	fsmap  caddy.FileSystems
 	log    *zap.Logger
 	app    *App
+	fs     fs.FS
 }
 
 func (s SubstrateHandler) CaddyModule() caddy.ModuleInfo {
@@ -258,7 +259,11 @@ func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 	s.app = app.(*App)
 	s.app.Substrates[s.Key()] = s
 
-	s.fsmap = ctx.Filesystems()
+	fs, ok := ctx.Filesystems().Get("")
+	if !ok {
+		return fmt.Errorf("no filesystem available")
+	}
+	s.fs = fs
 
 	return nil
 }
