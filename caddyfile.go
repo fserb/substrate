@@ -2,16 +2,13 @@ package substrate
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp/fileserver"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy"
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp/rewrite"
 )
 
 func init() {
@@ -145,33 +142,18 @@ func parseSubstrateDirective(h httpcaddyfile.Helper) ([]httpcaddyfile.ConfigValu
 	}
 	routes = append(routes, substrateRoute)
 
-	files := []string{"{http.request.uri.path}"}
-	for i := range maxTryFiles {
-		files = append(files, fmt.Sprintf("{http.request.uri.path}{substrate.match_files.%d}", i))
-	}
-	rewriteMatcherSet := caddy.ModuleMap{
-		"file": h.JSON(fileserver.MatchFile{
-			TryFiles:  files,
-			TryPolicy: "first_exist",
+	reverseProxyMatcherSet := caddy.ModuleMap{
+		"not": h.JSON(caddyhttp.MatchNot{
+			MatcherSetsRaw: []caddy.ModuleMap{
+				{
+					"vars": h.JSON(caddyhttp.VarsMatcher{
+						"{substrate.host}": []string{""},
+					}),
+				},
+			},
 		}),
 	}
-	rewriteHandler := rewrite.Rewrite{
-		URI: "{http.matchers.file.relative}",
-	}
-	rewriteRoute := caddyhttp.Route{
-		MatcherSetsRaw: []caddy.ModuleMap{rewriteMatcherSet},
-		HandlersRaw: []json.RawMessage{caddyconfig.JSONModuleObject(rewriteHandler,
-			"handler", "rewrite", nil)},
-	}
-	routes = append(routes, rewriteRoute)
 
-	paths := []string{}
-	for i := range maxMatchExts {
-		paths = append(paths, fmt.Sprintf("{substrate.match_path.%d}", i))
-	}
-	reverseProxyMatcherSet := caddy.ModuleMap{
-		"path": h.JSON(paths),
-	}
 	reverseProxyHandler := reverseproxy.Handler{
 		Upstreams: reverseproxy.UpstreamPool{
 			&reverseproxy.Upstream{

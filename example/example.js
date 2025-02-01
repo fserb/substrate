@@ -13,7 +13,7 @@ if (sub) {
     body: JSON.stringify({
       host: `:${PORT}`,
       try_files: ["/index.md", ".md"],
-      match: ["*.md"],
+      match: [".md"],
     }),
   });
 }
