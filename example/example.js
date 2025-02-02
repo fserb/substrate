@@ -21,6 +21,7 @@ if (sub) {
 
 Deno.serve({ port: PORT }, (req) => {
   const path = req.url;
-  return new Response("Hello, World! " + sub + " ==> " + path);
+  const cwd = Deno.cwd();
+  return new Response("Hello, World! " + sub + " ==> " + path + " at " + cwd);
 });
 

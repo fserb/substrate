@@ -95,13 +95,6 @@ func (s *SubstrateHandler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 		}
 	}
 
-	if s.RedirectStdout == nil {
-		s.RedirectStdout = &outputTarget{Type: "stdout"}
-	}
-	if s.RedirectStderr == nil {
-		s.RedirectStderr = &outputTarget{Type: "stderr"}
-	}
-
 	return nil
 }
 

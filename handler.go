@@ -2,14 +2,9 @@ package substrate
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/fs"
-	"math"
-	"math/big"
 	"os"
 	"os/exec"
 	"sort"
@@ -62,9 +57,8 @@ type SubstrateHandler struct {
 	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
 	RestartPolicy  string            `json:"restart_policy,omitempty"`
 
-	N int `json:"n,omitempty"`
-
 	Order *Order `json:"-"`
+	Key   string `json:"-"`
 
 	cancel context.CancelFunc
 	log    *zap.Logger
@@ -79,17 +73,6 @@ func (s SubstrateHandler) CaddyModule() caddy.ModuleInfo {
 	}
 }
 
-func (s *SubstrateHandler) Key() string {
-	out, err := json.Marshal(s)
-	if err != nil {
-		s.log.Error("Error marshalling child", zap.Error(err))
-		return ""
-	}
-
-	hash := sha1.Sum(out)
-	return hex.EncodeToString(hash[:])
-}
-
 func (s *SubstrateHandler) newCmd() *exec.Cmd {
 	cmd := exec.Command(s.Command[0], s.Command[1:]...)
 	configureSysProcAttr(cmd)
@@ -98,19 +81,19 @@ func (s *SubstrateHandler) newCmd() *exec.Cmd {
 	for key, value := range s.Env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
-	env = append(env, fmt.Sprintf("SUBSTRATE=%s/%s", s.app.Host, s.Key()))
+	env = append(env, fmt.Sprintf("SUBSTRATE=%s/%s", s.app.Host, s.Key))
 	cmd.Env = env
 
 	configureExecutingUser(cmd, s.User)
 
 	cmd.Dir = s.Dir
 
-	outFile, err := getRedirectFile(s.RedirectStdout)
+	outFile, err := getRedirectFile(s.RedirectStdout, "stdout")
 	if err != nil {
 		s.log.Error("Error opening process stdout", zap.Error(err))
 		outFile = nil
 	}
-	errFile, err := getRedirectFile(s.RedirectStderr)
+	errFile, err := getRedirectFile(s.RedirectStderr, "stderr")
 	if err != nil {
 		s.log.Error("Error opening process stderr", zap.Error(err))
 		errFile = nil
@@ -194,8 +177,13 @@ cmdLoop:
 	}
 }
 
-func getRedirectFile(target *outputTarget) (*os.File, error) {
-	switch target.Type {
+func getRedirectFile(target *outputTarget, default_type string) (*os.File, error) {
+	t := default_type
+	if target != nil {
+		t = target.Type
+	}
+
+	switch t {
 	case "stdout":
 		return os.Stdout, nil
 	case "stderr":
@@ -248,24 +236,21 @@ func (s *SubstrateHandler) UpdateOrder(order Order) {
 func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 	s.log = ctx.Logger(s).With(zap.Strings("cmd", s.Command))
 
-	bi, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt32))
-	if err != nil {
-		return err
+	fs, ok := ctx.Filesystems().Get("")
+	if !ok {
+		return fmt.Errorf("no filesystem available")
 	}
-	s.N = int(bi.Int64())
+	s.fs = fs
 
 	app, err := ctx.App("substrate")
 	if err != nil {
 		return err
 	}
 	s.app = app.(*App)
-	s.app.Substrates[s.Key()] = s
-
-	fs, ok := ctx.Filesystems().Get("")
-	if !ok {
-		return fmt.Errorf("no filesystem available")
+	err = s.app.addSub(s)
+	if err != nil {
+		return err
 	}
-	s.fs = fs
 
 	return nil
 }

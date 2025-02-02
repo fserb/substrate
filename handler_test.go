@@ -2,7 +2,6 @@ package substrate
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -156,7 +155,7 @@ func TestUnmarshalCaddyfile(t *testing.T) {
 func TestGetRedirectFile(t *testing.T) {
 	// Test stdout.
 	target := &outputTarget{Type: "stdout"}
-	f, err := getRedirectFile(target)
+	f, err := getRedirectFile(target, "")
 	if err != nil {
 		t.Errorf("getRedirectFile(stdout) error: %v", err)
 	}
@@ -166,7 +165,7 @@ func TestGetRedirectFile(t *testing.T) {
 
 	// Test stderr.
 	target = &outputTarget{Type: "stderr"}
-	f, err = getRedirectFile(target)
+	f, err = getRedirectFile(target, "")
 	if err != nil {
 		t.Errorf("getRedirectFile(stderr) error: %v", err)
 	}
@@ -176,7 +175,7 @@ func TestGetRedirectFile(t *testing.T) {
 
 	// Test null.
 	target = &outputTarget{Type: "null"}
-	f, err = getRedirectFile(target)
+	f, err = getRedirectFile(target, "")
 	if err != nil {
 		t.Errorf("getRedirectFile(null) error: %v", err)
 	}
@@ -187,7 +186,7 @@ func TestGetRedirectFile(t *testing.T) {
 	// Test file.
 	tmpfile := filepath.Join(os.TempDir(), fmt.Sprintf("test_redirect_%d.log", time.Now().UnixNano()))
 	target = &outputTarget{Type: "file", File: tmpfile}
-	f, err = getRedirectFile(target)
+	f, err = getRedirectFile(target, "")
 	if err != nil {
 		t.Errorf("getRedirectFile(file) error: %v", err)
 	}
@@ -199,9 +198,17 @@ func TestGetRedirectFile(t *testing.T) {
 
 	// Test invalid type.
 	target = &outputTarget{Type: "invalid"}
-	_, err = getRedirectFile(target)
+	_, err = getRedirectFile(target, "")
 	if err == nil {
 		t.Error("expected error for invalid redirect target")
+	}
+
+	f, err = getRedirectFile(nil, "stdout")
+	if err != nil {
+		t.Errorf("getRedirectFile(nil) error: %v", err)
+	}
+	if f != os.Stdout {
+		t.Error("expected os.Stdout for nil target")
 	}
 }
 
@@ -220,27 +227,6 @@ func TestUpdateOrder(t *testing.T) {
 	// Ensure sorting is as expected.
 	if !slices.Equal(sorted, expected) {
 		t.Errorf("sorted try_files: got %v, expected %v", sorted, expected)
-	}
-}
-
-func TestKeyNotEmpty(t *testing.T) {
-	sh := &SubstrateHandler{
-		Command:        []string{"echo", "hello"},
-		Env:            map[string]string{"FOO": "bar"},
-		User:           "testuser",
-		Dir:            "/tmp",
-		RedirectStdout: &outputTarget{Type: "stdout"},
-		RedirectStderr: &outputTarget{Type: "stderr"},
-		RestartPolicy:  "always",
-		log:            zap.NewNop(),
-	}
-	key := sh.Key()
-	if key == "" {
-		t.Error("expected non-empty key")
-	}
-	// Ensure key is a valid hex string.
-	if _, err := hex.DecodeString(key); err != nil {
-		t.Errorf("key is not valid hex: %v", err)
 	}
 }
 

@@ -13,10 +13,10 @@ import (
 func TestAppServeHTTP(t *testing.T) {
 	sh := &SubstrateHandler{}
 	sh.log = zaptest.NewLogger(t)
-	key := sh.Key()
+	key := sh.Key
 
 	app := &App{
-		Substrates: map[string]*SubstrateHandler{
+		substrates: map[string]*SubstrateHandler{
 			key: sh,
 		},
 		log: zaptest.NewLogger(t),
@@ -45,7 +45,7 @@ func TestAppServeHTTP(t *testing.T) {
 
 func TestAppServeHTTP_InvalidMethod(t *testing.T) {
 	app := &App{
-		Substrates: make(map[string]*SubstrateHandler),
+		substrates: make(map[string]*SubstrateHandler),
 		log:        zaptest.NewLogger(t),
 	}
 	req := httptest.NewRequest("GET", "/", nil)
@@ -58,7 +58,7 @@ func TestAppServeHTTP_InvalidMethod(t *testing.T) {
 
 func TestAppServeHTTP_InvalidKey(t *testing.T) {
 	app := &App{
-		Substrates: make(map[string]*SubstrateHandler),
+		substrates: make(map[string]*SubstrateHandler),
 		log:        zaptest.NewLogger(t),
 	}
 	order := Order{Host: "http://example.com"}
@@ -76,10 +76,10 @@ func TestAppServeHTTP_InvalidKey(t *testing.T) {
 func TestAppServeHTTP_InvalidJSON(t *testing.T) {
 	sh := &SubstrateHandler{Command: []string{"echo", "test"}}
 	sh.log = zaptest.NewLogger(t)
-	key := sh.Key()
+	key := sh.Key
 
 	app := &App{
-		Substrates: map[string]*SubstrateHandler{key: sh},
+		substrates: map[string]*SubstrateHandler{key: sh},
 		log:        zaptest.NewLogger(t),
 	}
 	req := httptest.NewRequest("POST", "/"+key, bytes.NewReader([]byte("{invalid json")))
@@ -95,10 +95,10 @@ func TestAppServeHTTP_InvalidJSON(t *testing.T) {
 func TestAppServeHTTP_InvalidContentType(t *testing.T) {
 	sh := &SubstrateHandler{Command: []string{"echo", "test"}}
 	sh.log = zaptest.NewLogger(t)
-	key := sh.Key()
+	key := sh.Key
 
 	app := &App{
-		Substrates: map[string]*SubstrateHandler{key: sh},
+		substrates: map[string]*SubstrateHandler{key: sh},
 		log:        zaptest.NewLogger(t),
 	}
 	order := Order{Host: "http://example.com"}
@@ -117,10 +117,10 @@ func TestAppServeHTTP_UpdateOrderOverwrite(t *testing.T) {
 	// Create a substrate handler with an initial command.
 	sh := &SubstrateHandler{Command: []string{"echo", "test"}}
 	sh.log = zaptest.NewLogger(t)
-	key := sh.Key()
+	key := sh.Key
 
 	app := &App{
-		Substrates: map[string]*SubstrateHandler{key: sh},
+		substrates: map[string]*SubstrateHandler{key: sh},
 		log:        zaptest.NewLogger(t),
 	}
 

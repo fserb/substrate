@@ -2,9 +2,14 @@ package substrate
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"math/big"
 	"net"
 	"net/http"
 	"time"
@@ -33,11 +38,13 @@ var (
 )
 
 type App struct {
-	Substrates map[string]*SubstrateHandler `json:"substrates,omitempty"`
-	Host       string                       `json:"-"`
+	Host string `json:"-"`
+
+	substrates map[string]*SubstrateHandler `json:"substrates,omitempty"`
 
 	addr caddy.NetworkAddress
 	log  *zap.Logger
+	salt []byte
 }
 
 func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) {
@@ -64,7 +71,33 @@ func (App) CaddyModule() caddy.ModuleInfo {
 func (h *App) Provision(ctx caddy.Context) error {
 	h.log = ctx.Logger(h)
 	h.log.Info("Provisioning substrate")
-	h.Substrates = make(map[string]*SubstrateHandler)
+	h.substrates = make(map[string]*SubstrateHandler)
+
+	bi, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
+	if err != nil {
+		return err
+	}
+	h.salt = []byte(hex.EncodeToString(bi.Bytes()) + ":")
+
+	return nil
+}
+
+func (h *App) addSub(sub *SubstrateHandler) error {
+	out, err := json.Marshal(sub)
+	if err != nil {
+		return err
+	}
+
+	hash := sha1.Sum(append(h.salt, out...))
+	fmt.Println("hash", string(append(h.salt, out...)), "===>", hex.EncodeToString(hash[:]))
+	key := hex.EncodeToString(hash[:])
+
+	if _, ok := h.substrates[key]; ok {
+		return fmt.Errorf("substrate with key %s already exists", key)
+	}
+
+	sub.Key = key
+	h.substrates[key] = sub
 	return nil
 }
 
@@ -88,7 +121,7 @@ func (h *App) startServer() error {
 
 	localSubstrateServer = nil
 
-	if len(h.Substrates) == 0 {
+	if len(h.substrates) == 0 {
 		return nil
 	}
 
@@ -150,14 +183,14 @@ func (h *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	key := r.URL.Path[1:]
 
-	sub, ok := h.Substrates[key]
+	sub, ok := h.substrates[key]
 	if !ok {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		h.log.Error("Substrate not found", zap.String("key", key))
 		return
 	}
 
-	h.log.Info("Substrate", zap.Any("sub", sub), zap.String("key", sub.Key()))
+	h.log.Info("Substrate", zap.Any("sub", sub), zap.String("key", key))
 
 	var order Order
 	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
@@ -177,7 +210,7 @@ func (h *App) Start() error {
 		return err
 	}
 
-	for _, sub := range h.Substrates {
+	for _, sub := range h.substrates {
 		go sub.Run()
 	}
 	return nil
@@ -185,7 +218,7 @@ func (h *App) Start() error {
 
 func (h *App) Stop() error {
 	h.log.Info("Stopping substrate")
-	for _, sub := range h.Substrates {
+	for _, sub := range h.substrates {
 		sub.Stop()
 	}
 	return nil
