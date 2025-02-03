@@ -28,8 +28,16 @@ var (
 
 func (s *Server) Start() error {
 	if s.readyCh != nil {
-		fmt.Println("SERVER ALREADY RUNNING AND RESTARTED")
 		return nil
+	}
+
+	pending_cmds := false
+	cmds.Range(func(key, value any) bool {
+		pending_cmds = true
+		return false
+	})
+	if pending_cmds {
+		return fmt.Errorf("pending commands while starting server")
 	}
 
 	s.readyCh = make(chan struct{})
