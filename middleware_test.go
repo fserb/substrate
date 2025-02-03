@@ -39,6 +39,8 @@ func TestFileExists(t *testing.T) {
 			t.Errorf("fileExists(%q) = %v; want %v", tt.path, got, tt.expected)
 		}
 	}
+
+	CheckUsagePool(t)
 }
 
 func TestFindBestResource(t *testing.T) {
@@ -82,6 +84,8 @@ func TestFindBestResource(t *testing.T) {
 			t.Errorf("findBestResource(%q) = %v; want %v", tt.reqPath, got, *tt.want)
 		}
 	}
+
+	CheckUsagePool(t)
 }
 
 func TestEnableReverseProxy(t *testing.T) {
@@ -107,6 +111,8 @@ func TestEnableReverseProxy(t *testing.T) {
 			t.Errorf("enableReverseProxy(%q) = %v; want %v", tt.path, got, tt.expected)
 		}
 	}
+
+	CheckUsagePool(t)
 }
 
 func TestServeHTTP(t *testing.T) {
@@ -162,5 +168,7 @@ func TestServeHTTP(t *testing.T) {
 	if rrNil.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 for nil Order, got %d", rrNil.Code)
 	}
+
+	CheckUsagePool(t)
 }
 

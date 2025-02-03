@@ -11,6 +11,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/caddyserver/caddy/v2"
 	"go.uber.org/zap"
 )
 
@@ -40,9 +41,13 @@ type execCmd struct {
 
 	key    string
 	cancel context.CancelFunc
-	app    *App
+	host   string
 	log    *zap.Logger
 }
+
+var (
+	_ caddy.Destructor = (*execCmd)(nil)
+)
 
 func (s *execCmd) UpdateOrder(order Order) {
 	// Sort TryFiles by reverse length, then lexicographically
@@ -59,22 +64,8 @@ func (s *execCmd) UpdateOrder(order Order) {
 // After you create an execCmd, we check if there's one with the same hash
 // in store. If there is, we replace your cmd with the live one.
 func (s *execCmd) Register(app *App) *execCmd {
-	s.app = app
-
-	other := app.getSub(s.Key())
-	if other != nil {
-		return other
-	}
-
-	err := app.addSub(s)
-	if err != nil {
-		app.log.Error("Failed to register substrate", zap.Error(err))
-		return nil
-	}
-
 	s.log = app.log.With(zap.String("key", s.Key()))
-
-	return s
+	return app.registerCmd(s)
 }
 
 func (s *execCmd) Key() string {
@@ -88,7 +79,7 @@ func (s *execCmd) Key() string {
 		return ""
 	}
 
-	hash := sha1.Sum(append(s.app.salt, out...))
+	hash := sha1.Sum(append(salt, out...))
 	s.key = hex.EncodeToString(hash[:])
 	return s.key
 }
@@ -101,7 +92,7 @@ func (s *execCmd) newExecCommand() *exec.Cmd {
 	for key, value := range s.Env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
-	env = append(env, fmt.Sprintf("SUBSTRATE=%s/%s", s.app.Host, s.Key()))
+	env = append(env, fmt.Sprintf("SUBSTRATE=%s/%s", s.host, s.Key()))
 	cmd.Env = env
 
 	configureExecutingUser(cmd, s.User)
@@ -126,6 +117,10 @@ func (s *execCmd) newExecCommand() *exec.Cmd {
 }
 
 func (s *execCmd) Run() {
+	if s.cancel != nil {
+		return
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	delay := minRestartDelay
@@ -220,5 +215,10 @@ func (s *execCmd) Stop() {
 	if s.cancel != nil {
 		s.cancel()
 	}
+}
+
+func (s *execCmd) Destruct() error {
+	s.Stop()
+	return nil
 }
 

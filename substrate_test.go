@@ -11,7 +11,21 @@ import (
 	"go.uber.org/zap"
 )
 
-func TestAppServeHTTP(t *testing.T) {
+func CheckUsagePool(t *testing.T) {
+	pool.Range(func(key, value any) bool {
+		ref, _ := pool.References(key)
+		t.Errorf("Pool missing delete for key '%s' (%d)", key, ref)
+		return true
+	})
+
+	cmds.Range(func(key, value any) bool {
+		ref, _ := cmds.References(key)
+		t.Errorf("Commands missing delete for key '%s' (%d)", key, ref)
+		return true
+	})
+}
+
+func TestApp(t *testing.T) {
 	app := &App{
 		cmds: map[string]*execCmd{},
 		log:  zap.NewNop(),
@@ -19,11 +33,14 @@ func TestAppServeHTTP(t *testing.T) {
 	app.Provision(caddy.Context{})
 
 	cmd := &execCmd{
-		Command: []string{"echo", "test"},
+		Command:        []string{"echo", "test"},
+		RedirectStdout: &outputTarget{Type: "null"},
 	}
 
 	cmd.Register(app)
 	key := cmd.Key()
+
+	app.Start()
 
 	order := Order{
 		Host:     "http://example.com",
@@ -45,9 +62,13 @@ func TestAppServeHTTP(t *testing.T) {
 	if cmd.Order.Host != order.Host {
 		t.Errorf("expected host %s, got %s", order.Host, cmd.Order.Host)
 	}
+
+	app.Stop()
+
+	CheckUsagePool(t)
 }
 
-func TestAppServeHTTP_InvalidMethod(t *testing.T) {
+func TestApp_InvalidMethod(t *testing.T) {
 	app := &App{
 		cmds: make(map[string]*execCmd),
 		log:  zap.NewNop(),
@@ -59,9 +80,11 @@ func TestAppServeHTTP_InvalidMethod(t *testing.T) {
 	if rw.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", rw.Code)
 	}
+
+	CheckUsagePool(t)
 }
 
-func TestAppServeHTTP_InvalidKey(t *testing.T) {
+func TestApp_InvalidKey(t *testing.T) {
 	app := &App{
 		cmds: make(map[string]*execCmd),
 		log:  zap.NewNop(),
@@ -77,9 +100,11 @@ func TestAppServeHTTP_InvalidKey(t *testing.T) {
 	if rw.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", rw.Code)
 	}
+
+	CheckUsagePool(t)
 }
 
-func TestAppServeHTTP_InvalidJSON(t *testing.T) {
+func TestApp_InvalidJSON(t *testing.T) {
 	app := &App{
 		cmds: map[string]*execCmd{},
 		log:  zap.NewNop(),
@@ -87,10 +112,13 @@ func TestAppServeHTTP_InvalidJSON(t *testing.T) {
 	app.Provision(caddy.Context{})
 
 	cmd := &execCmd{
-		Command: []string{"echo", "test"},
+		Command:        []string{"echo", "test"},
+		RedirectStdout: &outputTarget{Type: "null"},
 	}
 
 	cmd.Register(app)
+	app.Start()
+
 	key := cmd.Key()
 
 	req := httptest.NewRequest("POST", "/"+key, bytes.NewReader([]byte("{invalid json")))
@@ -102,9 +130,13 @@ func TestAppServeHTTP_InvalidJSON(t *testing.T) {
 	if rw.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", rw.Code)
 	}
+
+	app.Stop()
+
+	CheckUsagePool(t)
 }
 
-func TestAppServeHTTP_InvalidContentType(t *testing.T) {
+func TestApp_InvalidContentType(t *testing.T) {
 	app := &App{
 		cmds: map[string]*execCmd{},
 		log:  zap.NewNop(),
@@ -112,10 +144,13 @@ func TestAppServeHTTP_InvalidContentType(t *testing.T) {
 	app.Provision(caddy.Context{})
 
 	cmd := &execCmd{
-		Command: []string{"echo", "test"},
+		Command:        []string{"echo", "test"},
+		RedirectStdout: &outputTarget{Type: "null"},
 	}
 
 	cmd.Register(app)
+	app.Start()
+
 	key := cmd.Key()
 
 	order := Order{Host: "http://example.com"}
@@ -129,9 +164,13 @@ func TestAppServeHTTP_InvalidContentType(t *testing.T) {
 	if rw.Code != http.StatusUnsupportedMediaType {
 		t.Errorf("expected 415, got %d", rw.Code)
 	}
+
+	app.Stop()
+
+	CheckUsagePool(t)
 }
 
-func TestAppServeHTTP_UpdateOrderOverwrite(t *testing.T) {
+func TestApp_UpdateOrderOverwrite(t *testing.T) {
 	app := &App{
 		cmds: map[string]*execCmd{},
 		log:  zap.NewNop(),
@@ -139,10 +178,13 @@ func TestAppServeHTTP_UpdateOrderOverwrite(t *testing.T) {
 	app.Provision(caddy.Context{})
 
 	cmd := &execCmd{
-		Command: []string{"echo", "test"},
+		Command:        []string{"echo", "test"},
+		RedirectStdout: &outputTarget{Type: "null"},
 	}
 
 	cmd.Register(app)
+	app.Start()
+
 	key := cmd.Key()
 
 	// First update
@@ -203,5 +245,9 @@ func TestAppServeHTTP_UpdateOrderOverwrite(t *testing.T) {
 			}
 		}
 	}
+
+	app.Stop()
+
+	CheckUsagePool(t)
 }
 

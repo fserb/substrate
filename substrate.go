@@ -1,17 +1,13 @@
 package substrate
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
-	"fmt"
+	"log"
 	"math"
 	"math/big"
-	"net"
 	"net/http"
-	"time"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
@@ -20,9 +16,25 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	salt []byte
+	pool *caddy.UsagePool
+	cmds *caddy.UsagePool
+)
+
 func init() {
+	pool = caddy.NewUsagePool()
+	cmds = caddy.NewUsagePool()
+
 	caddy.RegisterModule(App{})
 	httpcaddyfile.RegisterGlobalOption("substrate", parseGlobalSubstrate)
+
+	// set up salt
+	bi, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
+	if err != nil {
+		log.Fatalln(err)
+	}
+	salt = []byte(hex.EncodeToString(bi.Bytes()) + ":")
 }
 
 // Interface guards
@@ -32,18 +44,10 @@ var (
 	_ caddy.App         = (*App)(nil)
 )
 
-var (
-	localSubstrateServer *http.Server
-)
-
 type App struct {
-	Host string `json:"-"`
-
-	cmds map[string]*execCmd
-
-	addr caddy.NetworkAddress
-	log  *zap.Logger
-	salt []byte
+	cmds   map[string]*execCmd
+	server *Server
+	log    *zap.Logger
 }
 
 func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) {
@@ -68,102 +72,32 @@ func (App) CaddyModule() caddy.ModuleInfo {
 }
 
 func (h *App) Provision(ctx caddy.Context) error {
-	h.log = ctx.Logger(h)
+	if h.log == nil {
+		h.log = ctx.Logger(h)
+	}
 	h.log.Info("Provisioning substrate")
+
 	h.cmds = make(map[string]*execCmd)
 
-	bi, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
-	if err != nil {
-		return err
-	}
-	h.salt = []byte(hex.EncodeToString(bi.Bytes()) + ":")
+	obj, _ := pool.LoadOrStore("server", &Server{})
+	h.server = obj.(*Server)
+	h.server.log = h.log.Named("substrate server")
+
+	h.server.Start()
 
 	return nil
 }
 
-func (h *App) addSub(sub *execCmd) error {
-	key := sub.Key()
-
-	if _, ok := h.cmds[key]; ok {
-		return fmt.Errorf("substrate with key %s already exists", key)
+func (h *App) registerCmd(c *execCmd) *execCmd {
+	key := c.Key()
+	if h.cmds[key] != nil {
+		return h.cmds[key]
 	}
 
-	h.cmds[key] = sub
-	return nil
-}
-
-func (h *App) getSub(key string) *execCmd {
-	return h.cmds[key]
-}
-
-func (h *App) startServer() error {
-	oldServer := localSubstrateServer
-	defer func() {
-		if oldServer == nil {
-			return
-		}
-
-		go func(old *http.Server) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			err := old.Shutdown(ctx)
-			if err != nil {
-				caddy.Log().Named("substrate").Error("Error shutting down old server", zap.Error(err))
-			}
-			caddy.Log().Named("substrate").Info("Stopped previous server")
-		}(oldServer)
-	}()
-
-	localSubstrateServer = nil
-
-	if len(h.cmds) == 0 {
-		return nil
-	}
-
-	defaultPort := uint(0)
-	// if oldServer != nil {
-	// 	_, _, port, err := caddy.SplitNetworkAddress(oldServer.Addr)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	//
-	// 	p, err := strconv.ParseUint(port, 10, 16)
-	// 	defaultPort = uint(p)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// }
-
-	addr, err := caddy.ParseNetworkAddressWithDefaults("localhost", "tcp", defaultPort)
-	if err != nil {
-		return err
-	}
-
-	ln, err := addr.Listen(context.TODO(), 0, net.ListenConfig{})
-	if err != nil {
-		return err
-	}
-
-	localSubstrateServer = &http.Server{
-		Addr:    addr.String(),
-		Handler: h,
-	}
-
-	go func() {
-		if err := localSubstrateServer.Serve(ln.(net.Listener)); !errors.Is(err, http.ErrServerClosed) {
-			h.log.Error("Server shutdown for unknown reason", zap.Error(err))
-		}
-		h.log.Info("Server stopped")
-	}()
-
-	port := ln.(net.Listener).Addr().(*net.TCPAddr).Port
-	localSubstrateServer.Addr = fmt.Sprintf("localhost:%d", port)
-
-	h.Host = fmt.Sprintf("http://%s", localSubstrateServer.Addr)
-
-	h.log.Info("Serving substrate:", zap.String("host", h.Host))
-
-	return nil
+	out, _ := cmds.LoadOrStore(key, c)
+	outcmd := out.(*execCmd)
+	h.cmds[key] = outcmd
+	return outcmd
 }
 
 func (h *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -200,22 +134,26 @@ func (h *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *App) Start() error {
 	h.log.Info("Starting substrate")
-	err := h.startServer()
-	if err != nil {
-		return err
-	}
+	h.server.WaitForStart(h)
 
-	for _, sub := range h.cmds {
-		go sub.Run()
+	for _, c := range h.cmds {
+		c.host = h.server.Host
+		go c.Run()
 	}
 	return nil
 }
 
 func (h *App) Stop() error {
 	h.log.Info("Stopping substrate")
-	for _, sub := range h.cmds {
-		sub.Stop()
+
+	pool.Delete("server")
+
+	for _, c := range h.cmds {
+		cmds.Delete(c.Key())
 	}
+
+	pool.Delete("cmds")
+
 	return nil
 }
 

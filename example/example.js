@@ -23,7 +23,12 @@ if (sub) {
 
 Deno.serve({ port: PORT }, (req) => {
   const path = req.url;
-  const cwd = Deno.cwd();
-  return new Response("Hello, World! " + sub + " ==> " + path + " at " + cwd);
+  const fp = req.headers.get("x-forwarded-path");
+  return new Response(`Hello, World!
+
+sub: ${sub}
+path: ${path}
+fp: ${fp}
+`);
 });
 

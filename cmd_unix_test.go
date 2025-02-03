@@ -9,7 +9,8 @@ import (
 	"testing"
 )
 
-func TestConfigureExecutingUser_CommandOutput_CurrentUser(t *testing.T) {
+func TestCmdUnix_CommandOutput_CurrentUser(t *testing.T) {
+
 	currentUser, err := user.Current()
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +32,7 @@ func TestConfigureExecutingUser_CommandOutput_CurrentUser(t *testing.T) {
 	}
 }
 
-func TestConfigureExecutingUser_CommandOutput_SwitchUser(t *testing.T) {
+func TestCmdUnix_CommandOutput_SwitchUser(t *testing.T) {
 	currentUser, err := user.Current()
 	if err != nil {
 		t.Fatal(err)

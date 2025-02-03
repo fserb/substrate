@@ -56,6 +56,8 @@ func TestServeHTTPWithoutOrder(t *testing.T) {
 	if next.called {
 		t.Error("next handler should not be called when Order is nil")
 	}
+
+	CheckUsagePool(t)
 }
 
 func TestServeHTTPWithOrder(t *testing.T) {
@@ -103,6 +105,8 @@ func TestServeHTTPWithOrder(t *testing.T) {
 	if val, _ := repl.Get("substrate.host"); val != "http://localhost:1234" {
 		t.Errorf("expected 'http://localhost:1234', got %s", val)
 	}
+
+	CheckUsagePool(t)
 }
 
 func TestUnmarshalCaddyfile(t *testing.T) {
@@ -147,6 +151,8 @@ func TestUnmarshalCaddyfile(t *testing.T) {
 	if sh.Cmd.RedirectStderr == nil || sh.Cmd.RedirectStderr.Type != "stderr" {
 		t.Errorf("unexpected redirect_stderr: %+v", sh.Cmd.RedirectStderr)
 	}
+
+	CheckUsagePool(t)
 }
 
 func TestGetRedirectFile(t *testing.T) {
@@ -202,6 +208,8 @@ func TestGetRedirectFile(t *testing.T) {
 	if f != os.Stdout {
 		t.Error("expected os.Stdout")
 	}
+
+	CheckUsagePool(t)
 }
 
 func TestUpdateOrder(t *testing.T) {
@@ -222,5 +230,7 @@ func TestUpdateOrder(t *testing.T) {
 	if !slices.Equal(sorted, expected) {
 		t.Errorf("try_files sorted incorrectly: got %v, want %v", sorted, expected)
 	}
+
+	CheckUsagePool(t)
 }
 
