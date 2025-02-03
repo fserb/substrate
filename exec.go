@@ -19,6 +19,7 @@ type Order struct {
 	Host     string   `json:"host,omitempty"`
 	TryFiles []string `json:"try_files,omitempty"`
 	Match    []string `json:"match,omitempty"`
+	Paths    []string `json:"paths,omitempty"`
 	CatchAll []string `json:"catch_all,omitempty"`
 }
 

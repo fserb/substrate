@@ -79,20 +79,33 @@ func (s *SubstrateHandler) enableReverseProxy(r *http.Request) bool {
 	return false
 }
 
+func (s *SubstrateHandler) matchPath(r *http.Request) bool {
+	for _, p := range s.Cmd.Order.Paths {
+		if p == r.URL.Path {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	if s.Cmd == nil || s.Cmd.Order == nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		s.log.Error("No order")
 		return nil
 	}
 
-	match := s.findBestResource(r)
-	if *match != r.URL.Path {
-		r.Header.Set("X-Forwarded-Path", r.URL.Path)
-		r.URL.Path = *match
+	forceProxy := s.matchPath(r)
+
+	if !forceProxy {
+		match := s.findBestResource(r)
+		if match != nil && *match != r.URL.Path {
+			r.Header.Set("X-Forwarded-Path", r.URL.Path)
+			r.URL.Path = *match
+		}
 	}
 
-	if s.enableReverseProxy(r) {
+	if forceProxy || s.enableReverseProxy(r) {
 		s.proxy.SetHost(s.Cmd.Order.Host)
 		return s.proxy.ServeHTTP(w, r, next)
 	}
