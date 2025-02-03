@@ -16,14 +16,12 @@ function test {
   CGO_ENABLED=0 go test . "$@"
 }
 
-
-
 function complexity {
-  IGNORE="" compl complexity "$@"
+  IGNORE="*_test.go" compl complexity "$@"
 }
 
 function graph {
-  IGNORE="" compl graph "$@"
+  IGNORE="*_test.go" compl graph "$@"
 }
 
 function help {
