@@ -30,10 +30,9 @@ func TestFileExists(t *testing.T) {
 	}{
 		{"file.txt", true},
 		{"dir/", true},
-		{"dir", false}, // missing trailing slash
+		{"dir", false},
 		{"nonexistent", false},
 	}
-
 	for _, tt := range tests {
 		got := sh.fileExists(tt.path)
 		if got != tt.expected {
@@ -54,7 +53,10 @@ func TestFindBestResource(t *testing.T) {
 		TryFiles: []string{".html"},
 		CatchAll: []string{"index.html"},
 	}
-	sh := &SubstrateHandler{fs: mfs, Order: order}
+	sh := &SubstrateHandler{
+		fs:  mfs,
+		Cmd: &execCmd{Order: order},
+	}
 
 	tests := []struct {
 		reqPath string
@@ -62,19 +64,13 @@ func TestFindBestResource(t *testing.T) {
 	}{
 		{"/index.html", strPtr("/index.html")},
 		{"/about", strPtr("/about.html")},
-		// For "/blog/post", "/blog/post.html" fails; catch-all climbs to "/blog/index.html".
 		{"/blog/post", strPtr("/blog/index.html")},
-		// Weird URL with double slash; tryFiles appends suffix.
 		{"/foo//bar", strPtr("/foo//bar.html")},
-		// No candidate found.
 		{"/notfound", strPtr("/index.html")},
 	}
 
 	for _, tt := range tests {
-		r := &http.Request{
-			URL: &url.URL{Path: tt.reqPath},
-		}
-		// Inject "root" variable in context.
+		r := &http.Request{URL: &url.URL{Path: tt.reqPath}}
 		ctx := context.WithValue(r.Context(), "root", ".")
 		r = r.WithContext(ctx)
 		got := sh.findBestResource(r)
@@ -90,8 +86,10 @@ func TestFindBestResource(t *testing.T) {
 
 func TestEnableReverseProxy(t *testing.T) {
 	sh := &SubstrateHandler{
-		Order: &Order{
-			Match: []string{".jpg", ".png"},
+		Cmd: &execCmd{
+			Order: &Order{
+				Match: []string{".jpg", ".png"},
+			},
 		},
 	}
 	tests := []struct {
@@ -122,22 +120,21 @@ func TestServeHTTP(t *testing.T) {
 		Host:     "example.com",
 		Match:    []string{".html"},
 	}
-	sh := &SubstrateHandler{fs: mfs, Order: order, log: zap.NewNop()}
-
-	// Dummy next handler.
+	sh := &SubstrateHandler{
+		fs:  mfs,
+		log: zap.NewNop(),
+		Cmd: &execCmd{Order: order},
+	}
 	nextCalled := false
 	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
 		nextCalled = true
 		return nil
 	})
 
-	// Create a replacer and inject it into the context.
 	repl := caddy.NewReplacer()
 	ctx := context.WithValue(context.Background(), caddy.ReplacerCtxKey, repl)
 
-	// Test rewriting: /about doesn't exist, but /about.html does.
 	req := httptest.NewRequest("GET", "http://example.com/about", nil)
-	// Inject "root" var and replacer into context.
 	req = req.WithContext(context.WithValue(ctx, "root", "."))
 	rr := httptest.NewRecorder()
 
@@ -146,25 +143,24 @@ func TestServeHTTP(t *testing.T) {
 		t.Errorf("ServeHTTP returned error: %v", err)
 	}
 	if !nextCalled {
-		t.Errorf("next handler was not called")
+		t.Error("next handler was not called")
 	}
 	if got := req.Header.Get("X-Forwarded-Path"); got != "/about" {
-		t.Errorf("expected X-Forwarded-Path header to be /about, got %q", got)
+		t.Errorf("X-Forwarded-Path = %q; want /about", got)
 	}
 	if req.URL.Path != "/about.html" {
-		t.Errorf("expected URL.Path to be /about.html, got %q", req.URL.Path)
+		t.Errorf("URL.Path = %q; want /about.html", req.URL.Path)
 	}
 	if v, _ := repl.Get("substrate.host"); v != "example.com" {
-		t.Errorf("expected replacer substrate.host to be example.com, got %q", v)
+		t.Errorf("substrate.host = %q; want example.com", v)
 	}
 
-	// Test when Order is nil.
-	shNil := &SubstrateHandler{fs: mfs, Order: nil, log: zap.NewNop()}
+	shNil := &SubstrateHandler{fs: mfs, log: zap.NewNop()}
 	reqNil := httptest.NewRequest("GET", "http://example.com/", nil)
 	rrNil := httptest.NewRecorder()
 	err = shNil.ServeHTTP(rrNil, reqNil, next)
 	if rrNil.Code != http.StatusInternalServerError {
-		t.Errorf("expected status 500 for nil Order, got %d", rrNil.Code)
+		t.Errorf("expected 500 for nil Order, got %d", rrNil.Code)
 	}
 }
 

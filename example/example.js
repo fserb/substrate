@@ -4,6 +4,8 @@ const PORT = 4242;
 
 const sub = Deno.env.get("SUBSTRATE");
 
+console.log("GOING TO", sub);
+
 if (sub) {
   await fetch(sub, {
     method: "POST",

@@ -3,7 +3,6 @@ package substrate
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -40,7 +39,7 @@ var (
 type App struct {
 	Host string `json:"-"`
 
-	substrates map[string]*SubstrateHandler `json:"substrates,omitempty"`
+	cmds map[string]*execCmd
 
 	addr caddy.NetworkAddress
 	log  *zap.Logger
@@ -71,7 +70,7 @@ func (App) CaddyModule() caddy.ModuleInfo {
 func (h *App) Provision(ctx caddy.Context) error {
 	h.log = ctx.Logger(h)
 	h.log.Info("Provisioning substrate")
-	h.substrates = make(map[string]*SubstrateHandler)
+	h.cmds = make(map[string]*execCmd)
 
 	bi, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
 	if err != nil {
@@ -82,23 +81,19 @@ func (h *App) Provision(ctx caddy.Context) error {
 	return nil
 }
 
-func (h *App) addSub(sub *SubstrateHandler) error {
-	out, err := json.Marshal(sub)
-	if err != nil {
-		return err
-	}
+func (h *App) addSub(sub *execCmd) error {
+	key := sub.Key()
 
-	hash := sha1.Sum(append(h.salt, out...))
-	fmt.Println("hash", string(append(h.salt, out...)), "===>", hex.EncodeToString(hash[:]))
-	key := hex.EncodeToString(hash[:])
-
-	if _, ok := h.substrates[key]; ok {
+	if _, ok := h.cmds[key]; ok {
 		return fmt.Errorf("substrate with key %s already exists", key)
 	}
 
-	sub.Key = key
-	h.substrates[key] = sub
+	h.cmds[key] = sub
 	return nil
+}
+
+func (h *App) getSub(key string) *execCmd {
+	return h.cmds[key]
 }
 
 func (h *App) startServer() error {
@@ -121,7 +116,7 @@ func (h *App) startServer() error {
 
 	localSubstrateServer = nil
 
-	if len(h.substrates) == 0 {
+	if len(h.cmds) == 0 {
 		return nil
 	}
 
@@ -183,7 +178,7 @@ func (h *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	key := r.URL.Path[1:]
 
-	sub, ok := h.substrates[key]
+	sub, ok := h.cmds[key]
 	if !ok {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		h.log.Error("Substrate not found", zap.String("key", key))
@@ -210,7 +205,7 @@ func (h *App) Start() error {
 		return err
 	}
 
-	for _, sub := range h.substrates {
+	for _, sub := range h.cmds {
 		go sub.Run()
 	}
 	return nil
@@ -218,7 +213,7 @@ func (h *App) Start() error {
 
 func (h *App) Stop() error {
 	h.log.Info("Stopping substrate")
-	for _, sub := range h.substrates {
+	for _, sub := range h.cmds {
 		sub.Stop()
 	}
 	return nil

@@ -41,17 +41,17 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 		return &reqPath
 	}
 
-	for _, suffix := range s.Order.TryFiles {
+	for _, suffix := range s.Cmd.Order.TryFiles {
 		bigPath := reqPath + suffix
 		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
 			return &bigPath
 		}
 	}
 
-	if len(s.Order.CatchAll) > 0 {
+	if len(s.Cmd.Order.CatchAll) > 0 {
 		dir := reqPath
 		for {
-			for _, ca := range s.Order.CatchAll {
+			for _, ca := range s.Cmd.Order.CatchAll {
 				candidate := path.Join(dir, ca)
 				if s.fileExists(caddyhttp.SanitizedPathJoin(root, candidate)) {
 					return &candidate
@@ -72,7 +72,7 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 }
 
 func (s *SubstrateHandler) enableReverseProxy(r *http.Request) bool {
-	for _, ext := range s.Order.Match {
+	for _, ext := range s.Cmd.Order.Match {
 		if strings.HasSuffix(r.URL.Path, ext) {
 			return true
 		}
@@ -81,7 +81,7 @@ func (s *SubstrateHandler) enableReverseProxy(r *http.Request) bool {
 }
 
 func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	if s.Order == nil {
+	if s.Cmd == nil || s.Cmd.Order == nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		s.log.Error("No order")
 		return nil
@@ -95,7 +95,7 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 
 	if s.enableReverseProxy(r) {
 		repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
-		repl.Set("substrate.host", s.Order.Host)
+		repl.Set("substrate.host", s.Cmd.Order.Host)
 	}
 
 	return next.ServeHTTP(w, r)

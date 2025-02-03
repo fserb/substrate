@@ -18,11 +18,6 @@ func init() {
 	httpcaddyfile.RegisterDirectiveOrder("substrate", httpcaddyfile.Before, "invoke")
 }
 
-const (
-	maxTryFiles  = 32
-	maxMatchExts = 32
-)
-
 // Syntax:
 //
 //		substrate {
@@ -38,7 +33,9 @@ const (
 func (s *SubstrateHandler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 	var h httpcaddyfile.Helper = httpcaddyfile.Helper{Dispenser: d}
 
-	h.Next() // consume directive name
+	h.Next()
+
+	s.Cmd = &execCmd{}
 
 	for h.NextBlock(0) {
 		switch h.Val() {
@@ -46,17 +43,17 @@ func (s *SubstrateHandler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			if !h.NextArg() {
 				return h.ArgErr()
 			}
-			s.Command = append([]string{h.Val()}, h.RemainingArgs()...)
+			s.Cmd.Command = append([]string{h.Val()}, h.RemainingArgs()...)
 
 		case "env":
 			var envKey, envValue string
 			if !h.Args(&envKey, &envValue) {
 				return h.ArgErr()
 			}
-			if s.Env == nil {
-				s.Env = map[string]string{}
+			if s.Cmd.Env == nil {
+				s.Cmd.Env = map[string]string{}
 			}
-			s.Env[envKey] = envValue
+			s.Cmd.Env[envKey] = envValue
 		case "user":
 			var user string
 
@@ -64,25 +61,25 @@ func (s *SubstrateHandler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				return h.ArgErr()
 			}
 
-			s.User = user
+			s.Cmd.User = user
 		case "dir":
 			var dir string
 			if !h.Args(&dir) {
 				return h.ArgErr()
 			}
-			s.Dir = dir
+			s.Cmd.Dir = dir
 		case "redirect_stdout":
 			target, err := parseRedirect(h)
 			if err != nil {
 				return err
 			}
-			s.RedirectStdout = target
+			s.Cmd.RedirectStdout = target
 		case "redirect_stderr":
 			target, err := parseRedirect(h)
 			if err != nil {
 				return err
 			}
-			s.RedirectStderr = target
+			s.Cmd.RedirectStderr = target
 		case "restart_policy":
 			var p string
 			if !h.Args(&p) {
@@ -91,7 +88,7 @@ func (s *SubstrateHandler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 			if p != "always" && p != "never" && p != "on_failure" {
 				return h.Errf("Invalid restart policy: %s", p)
 			}
-			s.RestartPolicy = p
+			s.Cmd.RestartPolicy = p
 		}
 	}
 

@@ -18,7 +18,6 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 )
 
-// Dummy next handler for middleware chain.
 type dummyHandler struct {
 	called bool
 	check  func(r *http.Request)
@@ -33,20 +32,21 @@ func (d *dummyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
 }
 
 func TestServeHTTPWithoutOrder(t *testing.T) {
-	sh := &SubstrateHandler{log: zap.NewNop()}
-	// Order is nil.
+	sh := &SubstrateHandler{
+		Cmd: &execCmd{}, // Order is nil
+		log: zap.NewNop(),
+	}
 	next := &dummyHandler{}
 	rr := httptest.NewRecorder()
 	req, err := http.NewRequest("GET", "/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Provide a replacer in context.
+
 	repl := caddy.NewReplacer()
 	ctx := context.WithValue(req.Context(), caddy.ReplacerCtxKey, repl)
 	req = req.WithContext(ctx)
 
-	// Expect ServeHTTP to write a 500 since Order is nil.
 	if err := sh.ServeHTTP(rr, req, next); err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -59,21 +59,18 @@ func TestServeHTTPWithoutOrder(t *testing.T) {
 }
 
 func TestServeHTTPWithOrder(t *testing.T) {
-	// Set up a SubstrateHandler with an Order.
 	sh := &SubstrateHandler{
-		Order: &Order{
-			Host:     "http://localhost:1234",
-			TryFiles: []string{"/index.html"},
-			Match:    []string{".html"},
+		Cmd: &execCmd{
+			Order: &Order{
+				Host:     "http://localhost:1234",
+				TryFiles: []string{"/index.html"},
+				Match:    []string{".html"},
+			},
 		},
+		fs:  fstest.MapFS{"foo/index.html": &fstest.MapFile{Data: []byte("content")}},
 		log: zap.NewNop(),
 	}
-	// Create a fake file system with a file at "/foo/index.html".
-	sh.fs = fstest.MapFS{
-		"foo/index.html": &fstest.MapFile{Data: []byte("content")},
-	}
 
-	// Prepare a replacer with required variables.
 	repl := caddy.NewReplacer()
 	repl.Set("http.vars.root", ".")
 	repl.Set("http.vars.fs", "")
@@ -88,13 +85,11 @@ func TestServeHTTPWithOrder(t *testing.T) {
 
 	next := &dummyHandler{
 		check: func(r *http.Request) {
-			// Expect the URL path to be updated to "/foo/index.html"
 			if r.URL.Path != "/foo/index.html" {
-				t.Errorf("expected URL path '/foo/index.html', got %s", r.URL.Path)
+				t.Errorf("expected '/foo/index.html', got %s", r.URL.Path)
 			}
-			// Header should indicate the original path.
 			if got := r.Header.Get("X-Forwarded-Path"); got != "/foo" {
-				t.Errorf("expected X-Forwarded-Path '/foo', got %s", got)
+				t.Errorf("expected '/foo', got %s", got)
 			}
 		},
 	}
@@ -105,9 +100,8 @@ func TestServeHTTPWithOrder(t *testing.T) {
 	if !next.called {
 		t.Error("next handler was not called")
 	}
-	// Check that reverse proxy enabling set the substrate.host variable.
 	if val, _ := repl.Get("substrate.host"); val != "http://localhost:1234" {
-		t.Errorf("expected replacer 'substrate.host' to be 'http://localhost:1234', got %s", val)
+		t.Errorf("expected 'http://localhost:1234', got %s", val)
 	}
 }
 
@@ -129,86 +123,84 @@ func TestUnmarshalCaddyfile(t *testing.T) {
 		t.Fatalf("UnmarshalCaddyfile failed: %v", err)
 	}
 
-	if len(sh.Command) < 1 || sh.Command[0] != "/bin/echo" {
-		t.Errorf("unexpected command: %v", sh.Command)
+	if sh.Cmd == nil {
+		t.Fatal("Cmd should not be nil")
 	}
-	if val, ok := sh.Env["FOO"]; !ok || val != "bar" {
-		t.Errorf("unexpected env: %v", sh.Env)
+	if len(sh.Cmd.Command) < 1 || sh.Cmd.Command[0] != "/bin/echo" {
+		t.Errorf("unexpected command: %v", sh.Cmd.Command)
 	}
-	if sh.User != "testuser" {
-		t.Errorf("unexpected user: %s", sh.User)
+	if val, ok := sh.Cmd.Env["FOO"]; !ok || val != "bar" {
+		t.Errorf("unexpected env: %v", sh.Cmd.Env)
 	}
-	if sh.Dir != "/tmp" {
-		t.Errorf("unexpected dir: %s", sh.Dir)
+	if sh.Cmd.User != "testuser" {
+		t.Errorf("unexpected user: %s", sh.Cmd.User)
 	}
-	if sh.RestartPolicy != "always" {
-		t.Errorf("unexpected restart policy: %s", sh.RestartPolicy)
+	if sh.Cmd.Dir != "/tmp" {
+		t.Errorf("unexpected dir: %s", sh.Cmd.Dir)
 	}
-	if sh.RedirectStdout == nil || sh.RedirectStdout.Type != "file" || sh.RedirectStdout.File != "/tmp/stdout.log" {
-		t.Errorf("unexpected redirect_stdout: %+v", sh.RedirectStdout)
+	if sh.Cmd.RestartPolicy != "always" {
+		t.Errorf("unexpected restart policy: %s", sh.Cmd.RestartPolicy)
 	}
-	if sh.RedirectStderr == nil || sh.RedirectStderr.Type != "stderr" {
-		t.Errorf("unexpected redirect_stderr: %+v", sh.RedirectStderr)
+	if sh.Cmd.RedirectStdout == nil || sh.Cmd.RedirectStdout.Type != "file" || sh.Cmd.RedirectStdout.File != "/tmp/stdout.log" {
+		t.Errorf("unexpected redirect_stdout: %+v", sh.Cmd.RedirectStdout)
+	}
+	if sh.Cmd.RedirectStderr == nil || sh.Cmd.RedirectStderr.Type != "stderr" {
+		t.Errorf("unexpected redirect_stderr: %+v", sh.Cmd.RedirectStderr)
 	}
 }
 
 func TestGetRedirectFile(t *testing.T) {
-	// Test stdout.
 	target := &outputTarget{Type: "stdout"}
 	f, err := getRedirectFile(target, "")
 	if err != nil {
-		t.Errorf("getRedirectFile(stdout) error: %v", err)
+		t.Errorf("stdout error: %v", err)
 	}
 	if f != os.Stdout {
-		t.Error("expected os.Stdout for stdout target")
+		t.Error("expected os.Stdout")
 	}
 
-	// Test stderr.
 	target = &outputTarget{Type: "stderr"}
 	f, err = getRedirectFile(target, "")
 	if err != nil {
-		t.Errorf("getRedirectFile(stderr) error: %v", err)
+		t.Errorf("stderr error: %v", err)
 	}
 	if f != os.Stderr {
-		t.Error("expected os.Stderr for stderr target")
+		t.Error("expected os.Stderr")
 	}
 
-	// Test null.
 	target = &outputTarget{Type: "null"}
 	f, err = getRedirectFile(target, "")
 	if err != nil {
-		t.Errorf("getRedirectFile(null) error: %v", err)
+		t.Errorf("null error: %v", err)
 	}
 	if f != nil {
-		t.Error("expected nil for null target")
+		t.Error("expected nil for null")
 	}
 
-	// Test file.
 	tmpfile := filepath.Join(os.TempDir(), fmt.Sprintf("test_redirect_%d.log", time.Now().UnixNano()))
 	target = &outputTarget{Type: "file", File: tmpfile}
 	f, err = getRedirectFile(target, "")
 	if err != nil {
-		t.Errorf("getRedirectFile(file) error: %v", err)
+		t.Errorf("file error: %v", err)
 	}
 	if f == nil {
-		t.Error("expected non-nil file for file target")
+		t.Error("expected file handle, got nil")
 	}
 	f.Close()
 	os.Remove(tmpfile)
 
-	// Test invalid type.
 	target = &outputTarget{Type: "invalid"}
 	_, err = getRedirectFile(target, "")
 	if err == nil {
-		t.Error("expected error for invalid redirect target")
+		t.Error("expected error for invalid target")
 	}
 
 	f, err = getRedirectFile(nil, "stdout")
 	if err != nil {
-		t.Errorf("getRedirectFile(nil) error: %v", err)
+		t.Errorf("nil target error: %v", err)
 	}
 	if f != os.Stdout {
-		t.Error("expected os.Stdout for nil target")
+		t.Error("expected os.Stdout")
 	}
 }
 
@@ -217,16 +209,18 @@ func TestUpdateOrder(t *testing.T) {
 	order := Order{
 		TryFiles: []string{"/a", "/abc", "/ab", "/abcd", "/ab2"},
 	}
-	sh.UpdateOrder(order)
-	sorted := sh.Order.TryFiles
-	// Expected sort: first by descending length, then lexicographically.
+
+	sh.Cmd = &execCmd{}
+	sh.Cmd.UpdateOrder(order)
+
+	sorted := sh.Cmd.Order.TryFiles
 	expected := []string{"/abcd", "/ab2", "/abc", "/ab", "/a"}
+
 	if len(sorted) != len(expected) {
-		t.Fatalf("expected %d try_files, got %d", len(expected), len(sorted))
+		t.Fatalf("expected %d, got %d", len(expected), len(sorted))
 	}
-	// Ensure sorting is as expected.
 	if !slices.Equal(sorted, expected) {
-		t.Errorf("sorted try_files: got %v, expected %v", sorted, expected)
+		t.Errorf("try_files sorted incorrectly: got %v, want %v", sorted, expected)
 	}
 }
 
