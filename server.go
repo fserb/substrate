@@ -122,7 +122,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.log.Info("Substrate", zap.Any("cmd", cmd), zap.String("key", key))
+	s.log.Info("Substrate", zap.String("key", key), zap.Any("cmd", cmd))
 
 	var order Order
 	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
@@ -131,7 +131,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.log.Info("Received order", zap.Any("order", order))
+	s.log.Info("Received order", zap.String("key", key), zap.Any("order", order))
 	cmd.UpdateOrder(order)
 }
 

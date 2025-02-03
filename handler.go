@@ -45,13 +45,26 @@ var (
 	_ caddyhttp.MiddlewareHandler = (*SubstrateHandler)(nil)
 )
 
+type HostReverseProxy interface {
+	caddyhttp.MiddlewareHandler
+	caddy.Provisioner
+
+	SetHost(string)
+}
+
+type ReverseProxy struct{ *reverseproxy.Handler }
+
+func (s *ReverseProxy) SetHost(host string) {
+	s.Upstreams[0].Dial = host
+}
+
 // Those come from the child process.
 type SubstrateHandler struct {
 	Cmd   *execCmd `json:"cmd,omitempty"`
 	log   *zap.Logger
 	app   *App
 	fs    fs.FS
-	proxy *reverseproxy.Handler
+	proxy HostReverseProxy
 	ctx   *caddy.Context
 }
 
@@ -85,13 +98,14 @@ func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 	if err != nil {
 		return fmt.Errorf("error getting reverse_proxy module: %w", err)
 	}
-	s.proxy = mod.New().(*reverseproxy.Handler)
 
-	s.proxy.Upstreams = reverseproxy.UpstreamPool{
+	handler := mod.New().(*reverseproxy.Handler)
+	handler.Upstreams = reverseproxy.UpstreamPool{
 		&reverseproxy.Upstream{
 			Dial: "",
 		},
 	}
+	s.proxy = &ReverseProxy{handler}
 
 	err = s.proxy.Provision(*s.ctx)
 	if err != nil {

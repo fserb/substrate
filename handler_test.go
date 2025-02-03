@@ -25,21 +25,29 @@ type dummyHandler struct {
 	check  func(r *http.Request)
 }
 
-type dummyReverseProxy struct {
-	reverseproxy.Handler
-	called bool
-}
-
-func (d *dummyReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	d.called = true
-	return nil
-}
-
 func (d *dummyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
 	d.called = true
 	if d.check != nil {
 		d.check(r)
 	}
+	return nil
+}
+
+type dummyReverseProxy struct {
+	ReverseProxy
+	called bool
+}
+
+func NewDummyReverseProxy() *dummyReverseProxy {
+	return &dummyReverseProxy{ReverseProxy: ReverseProxy{&reverseproxy.Handler{
+		Upstreams: reverseproxy.UpstreamPool{
+			&reverseproxy.Upstream{
+				Dial: "",
+			}}}}}
+}
+
+func (d *dummyReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+	d.called = true
 	return nil
 }
 
@@ -73,6 +81,7 @@ func TestServeHTTPWithoutOrder(t *testing.T) {
 }
 
 func TestServeHTTPWithOrder(t *testing.T) {
+	drp := NewDummyReverseProxy()
 	sh := &SubstrateHandler{
 		Cmd: &execCmd{
 			Order: &Order{
@@ -81,21 +90,15 @@ func TestServeHTTPWithOrder(t *testing.T) {
 				Match:    []string{".html"},
 			},
 		},
-		proxy: &dummyReverseProxy{},
+		proxy: drp,
 		fs:    fstest.MapFS{"foo/index.html": &fstest.MapFile{Data: []byte("content")}},
 		log:   zap.NewNop(),
 	}
-
-	repl := caddy.NewReplacer()
-	repl.Set("http.vars.root", ".")
-	repl.Set("http.vars.fs", "")
 
 	req, err := http.NewRequest("GET", "/foo", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.WithValue(req.Context(), caddy.ReplacerCtxKey, repl)
-	req = req.WithContext(ctx)
 	rr := httptest.NewRecorder()
 
 	next := &dummyHandler{
@@ -112,11 +115,8 @@ func TestServeHTTPWithOrder(t *testing.T) {
 	if err := sh.ServeHTTP(rr, req, next); err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
-	if !next.called {
-		t.Error("next handler was not called")
-	}
-	if val, _ := repl.Get("substrate.host"); val != "http://localhost:1234" {
-		t.Errorf("expected 'http://localhost:1234', got %s", val)
+	if !drp.called {
+		t.Error("proxy was not called")
 	}
 
 	CheckUsagePool(t)

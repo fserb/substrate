@@ -93,7 +93,7 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 	}
 
 	if s.enableReverseProxy(r) {
-		s.proxy.Upstreams[0].Dial = s.Cmd.Order.Host
+		s.proxy.SetHost(s.Cmd.Order.Host)
 		return s.proxy.ServeHTTP(w, r, next)
 	}
 

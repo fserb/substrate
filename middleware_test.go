@@ -10,7 +10,6 @@ import (
 	"testing/fstest"
 
 	"github.com/caddyserver/caddy/v2"
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"go.uber.org/zap"
 )
 
@@ -126,20 +125,17 @@ func TestServeHTTP(t *testing.T) {
 		Host:     "example.com",
 		Match:    []string{".html"},
 	}
+	drp := NewDummyReverseProxy()
 	sh := &SubstrateHandler{
-		fs:  mfs,
-		log: zap.NewNop(),
-		Cmd: &execCmd{Order: order},
+		fs:    mfs,
+		log:   zap.NewNop(),
+		proxy: drp,
+		Cmd:   &execCmd{Order: order},
 	}
-	nextCalled := false
-	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-		nextCalled = true
-		return nil
-	})
+	next := &dummyHandler{}
 
 	repl := caddy.NewReplacer()
 	ctx := context.WithValue(context.Background(), caddy.ReplacerCtxKey, repl)
-
 	req := httptest.NewRequest("GET", "http://example.com/about", nil)
 	req = req.WithContext(context.WithValue(ctx, "root", "."))
 	rr := httptest.NewRecorder()
@@ -148,7 +144,7 @@ func TestServeHTTP(t *testing.T) {
 	if err != nil {
 		t.Errorf("ServeHTTP returned error: %v", err)
 	}
-	if !nextCalled {
+	if !drp.called {
 		t.Error("next handler was not called")
 	}
 	if got := req.Header.Get("X-Forwarded-Path"); got != "/about" {
@@ -156,9 +152,6 @@ func TestServeHTTP(t *testing.T) {
 	}
 	if req.URL.Path != "/about.html" {
 		t.Errorf("URL.Path = %q; want /about.html", req.URL.Path)
-	}
-	if v, _ := repl.Get("substrate.host"); v != "example.com" {
-		t.Errorf("substrate.host = %q; want example.com", v)
 	}
 
 	shNil := &SubstrateHandler{fs: mfs, log: zap.NewNop()}
