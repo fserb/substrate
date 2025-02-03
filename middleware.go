@@ -6,7 +6,6 @@ import (
 	"path"
 	"strings"
 
-	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 )
 
@@ -94,8 +93,8 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 	}
 
 	if s.enableReverseProxy(r) {
-		repl := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
-		repl.Set("substrate.host", s.Cmd.Order.Host)
+		s.proxy.Upstreams[0].Dial = s.Cmd.Order.Host
+		return s.proxy.ServeHTTP(w, r, next)
 	}
 
 	return next.ServeHTTP(w, r)

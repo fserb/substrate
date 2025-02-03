@@ -1,13 +1,11 @@
 package substrate
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
-	"github.com/caddyserver/caddy/v2/caddyconfig"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
@@ -35,9 +33,7 @@ const (
 //		}
 func init() {
 	caddy.RegisterModule(SubstrateHandler{})
-	httpcaddyfile.RegisterHandlerDirective("_substrate", parseSubstrateHandler)
-	httpcaddyfile.RegisterDirectiveOrder("_substrate", httpcaddyfile.Before, "invoke")
-	httpcaddyfile.RegisterDirective("substrate", parseSubstrateDirective)
+	httpcaddyfile.RegisterHandlerDirective("substrate", parseSubstrateHandler)
 	httpcaddyfile.RegisterDirectiveOrder("substrate", httpcaddyfile.Before, "invoke")
 }
 
@@ -51,10 +47,12 @@ var (
 
 // Those come from the child process.
 type SubstrateHandler struct {
-	Cmd *execCmd `json:"cmd,omitempty"`
-	log *zap.Logger
-	app *App
-	fs  fs.FS
+	Cmd   *execCmd `json:"cmd,omitempty"`
+	log   *zap.Logger
+	app   *App
+	fs    fs.FS
+	proxy *reverseproxy.Handler
+	ctx   *caddy.Context
 }
 
 func (s SubstrateHandler) CaddyModule() caddy.ModuleInfo {
@@ -65,6 +63,7 @@ func (s SubstrateHandler) CaddyModule() caddy.ModuleInfo {
 }
 
 func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
+	s.ctx = &ctx
 	s.log = ctx.Logger(s)
 
 	fs, ok := ctx.Filesystems().Get("")
@@ -80,6 +79,23 @@ func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 
 	if s.Cmd != nil {
 		s.Cmd = s.Cmd.Register(app.(*App))
+	}
+
+	mod, err := caddy.GetModule("http.handlers.reverse_proxy")
+	if err != nil {
+		return fmt.Errorf("error getting reverse_proxy module: %w", err)
+	}
+	s.proxy = mod.New().(*reverseproxy.Handler)
+
+	s.proxy.Upstreams = reverseproxy.UpstreamPool{
+		&reverseproxy.Upstream{
+			Dial: "",
+		},
+	}
+
+	err = s.proxy.Provision(*s.ctx)
+	if err != nil {
+		return fmt.Errorf("error provisioning reverse_proxy: %w", err)
 	}
 
 	return nil
@@ -174,49 +190,5 @@ func parseRedirect(h httpcaddyfile.Helper) (*outputTarget, error) {
 func parseSubstrateHandler(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
 	var sm SubstrateHandler
 	return &sm, sm.UnmarshalCaddyfile(h.Dispenser)
-}
-
-func parseSubstrateDirective(h httpcaddyfile.Helper) ([]httpcaddyfile.ConfigValue, error) {
-	routes := caddyhttp.RouteList{}
-
-	substrateHandler := SubstrateHandler{}
-	substrateHandler.UnmarshalCaddyfile(h.Dispenser)
-	substrateRoute := caddyhttp.Route{
-		HandlersRaw: []json.RawMessage{caddyconfig.JSONModuleObject(substrateHandler, "handler", "substrate", nil)},
-	}
-	routes = append(routes, substrateRoute)
-
-	reverseProxyMatcherSet := caddy.ModuleMap{
-		"not": h.JSON(caddyhttp.MatchNot{
-			MatcherSetsRaw: []caddy.ModuleMap{
-				{
-					"vars": h.JSON(caddyhttp.VarsMatcher{
-						"{substrate.host}": []string{""},
-					}),
-				},
-			},
-		}),
-	}
-
-	reverseProxyHandler := reverseproxy.Handler{
-		Upstreams: reverseproxy.UpstreamPool{
-			&reverseproxy.Upstream{
-				Dial: "{substrate.host}",
-			},
-		},
-	}
-	reverseProxyRoute := caddyhttp.Route{
-		MatcherSetsRaw: []caddy.ModuleMap{reverseProxyMatcherSet},
-		HandlersRaw: []json.RawMessage{caddyconfig.JSONModuleObject(reverseProxyHandler,
-			"handler", "reverse_proxy", nil)},
-	}
-	routes = append(routes, reverseProxyRoute)
-
-	return []httpcaddyfile.ConfigValue{
-		{
-			Class: "route",
-			Value: caddyhttp.Subroute{Routes: routes},
-		},
-	}, nil
 }
 

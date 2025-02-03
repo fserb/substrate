@@ -16,11 +16,23 @@ import (
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy"
 )
 
 type dummyHandler struct {
 	called bool
 	check  func(r *http.Request)
+}
+
+type dummyReverseProxy struct {
+	reverseproxy.Handler
+	called bool
+}
+
+func (d *dummyReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+	d.called = true
+	return nil
 }
 
 func (d *dummyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
@@ -69,8 +81,9 @@ func TestServeHTTPWithOrder(t *testing.T) {
 				Match:    []string{".html"},
 			},
 		},
-		fs:  fstest.MapFS{"foo/index.html": &fstest.MapFile{Data: []byte("content")}},
-		log: zap.NewNop(),
+		proxy: &dummyReverseProxy{},
+		fs:    fstest.MapFS{"foo/index.html": &fstest.MapFile{Data: []byte("content")}},
+		log:   zap.NewNop(),
 	}
 
 	repl := caddy.NewReplacer()
