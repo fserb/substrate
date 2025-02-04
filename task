@@ -9,19 +9,13 @@ function run {
 }
 
 function build {
-  CGO_ENABLED=0 go build -v -o caddy ./main
+  CGO_ENABLED=0 go build -v -o caddy \
+    -ldflags="-s -w" -trimpath -tags nobadger,nomysql,nopgx \
+    ./main
 }
 
 function test {
   CGO_ENABLED=0 go test . "$@"
-}
-
-function complexity {
-  IGNORE="*_test.go" compl complexity "$@"
-}
-
-function graph {
-  IGNORE="*_test.go" compl graph "$@"
 }
 
 function help {
