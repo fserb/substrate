@@ -85,11 +85,6 @@ func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 	}
 	s.fs = fs
 
-	app, err := ctx.App("substrate")
-	if err != nil {
-		return err
-	}
-
 	repl, ok := ctx.Context.Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 	if ok {
 		for i, c := range s.Cmd.Command {
@@ -101,6 +96,11 @@ func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 		}
 
 		s.Cmd.Dir = repl.ReplaceAll(s.Cmd.Dir, "")
+	}
+
+	app, err := ctx.App("substrate")
+	if err != nil {
+		return err
 	}
 
 	if s.Cmd != nil {
