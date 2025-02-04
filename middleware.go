@@ -55,22 +55,15 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 	}
 
 	if len(s.Cmd.Order.CatchAll) > 0 {
-		dir := reqPath
-		for {
-			for _, ca := range s.Cmd.Order.CatchAll {
-				candidate := path.Join(dir, ca)
-				if s.fileExists(caddyhttp.SanitizedPathJoin(root, candidate)) {
-					return &candidate
-				}
+		for _, ca := range s.Cmd.Order.CatchAll {
+			cad := path.Dir(ca)
+			if !strings.HasPrefix(reqPath, cad) {
+				continue
 			}
-			if dir == "/" || dir == "." {
-				break
+			candidate := caddyhttp.SanitizedPathJoin(root, ca)
+			if s.fileExists(candidate) {
+				return &ca
 			}
-			newDir := path.Dir(dir)
-			if newDir == dir {
-				break
-			}
-			dir = newDir
 		}
 	}
 

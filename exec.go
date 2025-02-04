@@ -57,6 +57,13 @@ func (s *execCmd) UpdateOrder(order Order) {
 		return order.Match[i] < order.Match[j]
 	})
 
+	sort.Slice(order.CatchAll, func(i, j int) bool {
+		if len(order.CatchAll[i]) != len(order.CatchAll[j]) {
+			return len(order.CatchAll[i]) > len(order.CatchAll[j])
+		}
+		return order.CatchAll[i] < order.CatchAll[j]
+	})
+
 	s.Order = &order
 }
 

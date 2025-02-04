@@ -52,7 +52,7 @@ func TestFindBestResource(t *testing.T) {
 	}
 	order := &Order{
 		Match:    []string{".html"},
-		CatchAll: []string{"index.html"},
+		CatchAll: []string{"/blog/index.html"},
 	}
 	sh := &SubstrateHandler{
 		fs:  mfs,
@@ -67,7 +67,7 @@ func TestFindBestResource(t *testing.T) {
 		{"/about", strPtr("/about.html")},
 		{"/blog/post", strPtr("/blog/index.html")},
 		{"/foo//bar", strPtr("/foo//bar.html")},
-		{"/notfound", strPtr("/index.html")},
+		{"/notfound", nil},
 	}
 
 	for _, tt := range tests {
@@ -80,7 +80,7 @@ func TestFindBestResource(t *testing.T) {
 				t.Errorf("findBestResource(%q) = %v; want nil", tt.reqPath, *got)
 			}
 		} else if got == nil || *got != *tt.want {
-			t.Errorf("findBestResource(%q) = %v; want %v", tt.reqPath, got, *tt.want)
+			t.Errorf("findBestResource(%q) = %#v; want %v", tt.reqPath, got, *tt.want)
 		}
 	}
 

@@ -16,7 +16,7 @@ if (sub) {
       host: `:${PORT}`,
       match: [".md"],
       paths: ["/up"],
-      catch_all: ["all.md"],
+      catch_all: ["/all.md"],
     }),
   });
 }
