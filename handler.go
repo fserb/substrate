@@ -90,6 +90,19 @@ func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 		return err
 	}
 
+	repl, ok := ctx.Context.Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
+	if ok {
+		for i, c := range s.Cmd.Command {
+			s.Cmd.Command[i] = repl.ReplaceAll(c, "")
+		}
+
+		for k, v := range s.Cmd.Env {
+			s.Cmd.Env[k] = repl.ReplaceAll(v, "")
+		}
+
+		s.Cmd.Dir = repl.ReplaceAll(s.Cmd.Dir, "")
+	}
+
 	if s.Cmd != nil {
 		s.Cmd = s.Cmd.Register(app.(*App))
 	}
