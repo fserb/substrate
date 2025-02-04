@@ -51,7 +51,7 @@ func TestFindBestResource(t *testing.T) {
 		"weird/path/index.html": {Data: []byte("weird")},
 	}
 	order := &Order{
-		TryFiles: []string{".html"},
+		Match:    []string{".html"},
 		CatchAll: []string{"index.html"},
 	}
 	sh := &SubstrateHandler{
@@ -120,7 +120,6 @@ func TestServeHTTP(t *testing.T) {
 		"blog/index.html": {Data: []byte("blog index")},
 	}
 	order := &Order{
-		TryFiles: []string{".html"},
 		CatchAll: []string{"index.html"},
 		Host:     "example.com",
 		Match:    []string{".html"},

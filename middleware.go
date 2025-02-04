@@ -40,7 +40,14 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 		return &reqPath
 	}
 
-	for _, suffix := range s.Cmd.Order.TryFiles {
+	for _, suffix := range s.Cmd.Order.Match {
+		bigPath := reqPath + "/index" + suffix
+		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
+			return &bigPath
+		}
+	}
+
+	for _, suffix := range s.Cmd.Order.Match {
 		bigPath := reqPath + suffix
 		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
 			return &bigPath

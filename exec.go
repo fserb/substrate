@@ -17,7 +17,6 @@ import (
 
 type Order struct {
 	Host     string   `json:"host,omitempty"`
-	TryFiles []string `json:"try_files,omitempty"`
 	Match    []string `json:"match,omitempty"`
 	Paths    []string `json:"paths,omitempty"`
 	CatchAll []string `json:"catch_all,omitempty"`
@@ -51,12 +50,11 @@ var (
 )
 
 func (s *execCmd) UpdateOrder(order Order) {
-	// Sort TryFiles by reverse length, then lexicographically
-	sort.Slice(order.TryFiles, func(i, j int) bool {
-		if len(order.TryFiles[i]) != len(order.TryFiles[j]) {
-			return len(order.TryFiles[i]) > len(order.TryFiles[j])
+	sort.Slice(order.Match, func(i, j int) bool {
+		if len(order.Match[i]) != len(order.Match[j]) {
+			return len(order.Match[i]) > len(order.Match[j])
 		}
-		return order.TryFiles[i] < order.TryFiles[j]
+		return order.Match[i] < order.Match[j]
 	})
 
 	s.Order = &order

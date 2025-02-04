@@ -85,9 +85,8 @@ func TestServeHTTPWithOrder(t *testing.T) {
 	sh := &SubstrateHandler{
 		Cmd: &execCmd{
 			Order: &Order{
-				Host:     "http://localhost:1234",
-				TryFiles: []string{"/index.html"},
-				Match:    []string{".html"},
+				Host:  "http://localhost:1234",
+				Match: []string{".html"},
 			},
 		},
 		proxy: drp,
@@ -228,13 +227,13 @@ func TestGetRedirectFile(t *testing.T) {
 func TestUpdateOrder(t *testing.T) {
 	sh := &SubstrateHandler{log: zap.NewNop()}
 	order := Order{
-		TryFiles: []string{"/a", "/abc", "/ab", "/abcd", "/ab2"},
+		Match: []string{"/a", "/abc", "/ab", "/abcd", "/ab2"},
 	}
 
 	sh.Cmd = &execCmd{}
 	sh.Cmd.UpdateOrder(order)
 
-	sorted := sh.Cmd.Order.TryFiles
+	sorted := sh.Cmd.Order.Match
 	expected := []string{"/abcd", "/ab2", "/abc", "/ab", "/a"}
 
 	if len(sorted) != len(expected) {

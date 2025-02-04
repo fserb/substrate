@@ -43,8 +43,8 @@ func TestApp(t *testing.T) {
 	app.Start()
 
 	order := Order{
-		Host:     "http://example.com",
-		TryFiles: []string{"a", "abc", "ab"},
+		Host:  "http://example.com",
+		Match: []string{"a", "abc", "ab"},
 	}
 	body, _ := json.Marshal(order)
 	req := httptest.NewRequest("POST", "/"+key, bytes.NewReader(body))
@@ -189,9 +189,8 @@ func TestApp_UpdateOrderOverwrite(t *testing.T) {
 
 	// First update
 	order1 := Order{
-		Host:     "http://example.com",
-		TryFiles: []string{"file1", "file2"},
-		Match:    []string{"match1"},
+		Host:  "http://example.com",
+		Match: []string{"match1"},
 	}
 	body1, _ := json.Marshal(order1)
 	req1 := httptest.NewRequest("POST", "/"+key, bytes.NewReader(body1))
@@ -208,9 +207,8 @@ func TestApp_UpdateOrderOverwrite(t *testing.T) {
 
 	// Second update (overwrites)
 	order2 := Order{
-		Host:     "http://example.org",
-		TryFiles: []string{"newfile"},
-		Match:    []string{"newmatch"},
+		Host:  "http://example.org",
+		Match: []string{"newmatch"},
 	}
 	body2, _ := json.Marshal(order2)
 	req2 := httptest.NewRequest("POST", "/"+key, bytes.NewReader(body2))
@@ -226,15 +224,6 @@ func TestApp_UpdateOrderOverwrite(t *testing.T) {
 	}
 	if cmd.Order.Host != order2.Host {
 		t.Errorf("expected host %q, got %q", order2.Host, cmd.Order.Host)
-	}
-	if len(cmd.Order.TryFiles) != len(order2.TryFiles) {
-		t.Errorf("expected %d try files, got %d", len(order2.TryFiles), len(cmd.Order.TryFiles))
-	} else {
-		for i, tf := range order2.TryFiles {
-			if cmd.Order.TryFiles[i] != tf {
-				t.Errorf("expected try file %q at index %d, got %q", tf, i, cmd.Order.TryFiles[i])
-			}
-		}
 	}
 	if len(cmd.Order.Match) != len(order2.Match) {
 		t.Errorf("expected %d match items, got %d", len(order2.Match), len(cmd.Order.Match))
