@@ -132,6 +132,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.log.Info("Received order", zap.String("key", key), zap.Any("order", order))
-	cmd.UpdateOrder(order)
+
+	order.Submit(cmd)
 }
 

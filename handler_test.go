@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"slices"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -83,16 +82,16 @@ func TestServeHTTPWithoutOrder(t *testing.T) {
 func TestServeHTTPWithOrder(t *testing.T) {
 	drp := NewDummyReverseProxy()
 	sh := &SubstrateHandler{
-		Cmd: &execCmd{
-			Order: &Order{
-				Host:  "http://localhost:1234",
-				Match: []string{".html"},
-			},
-		},
+		Cmd:   &execCmd{},
 		proxy: drp,
 		fs:    fstest.MapFS{"foo/index.html": &fstest.MapFile{Data: []byte("content")}},
 		log:   zap.NewNop(),
 	}
+
+	(&Order{
+		Host:  "http://localhost:1234",
+		Match: []string{"*.html"},
+	}).Submit(sh.Cmd)
 
 	req, err := http.NewRequest("GET", "/foo", nil)
 	if err != nil {
@@ -219,28 +218,6 @@ func TestGetRedirectFile(t *testing.T) {
 	}
 	if f != os.Stdout {
 		t.Error("expected os.Stdout")
-	}
-
-	CheckUsagePool(t)
-}
-
-func TestUpdateOrder(t *testing.T) {
-	sh := &SubstrateHandler{log: zap.NewNop()}
-	order := Order{
-		Match: []string{"/a", "/abc", "/ab", "/abcd", "/ab2"},
-	}
-
-	sh.Cmd = &execCmd{}
-	sh.Cmd.UpdateOrder(order)
-
-	sorted := sh.Cmd.Order.Match
-	expected := []string{"/abcd", "/ab2", "/abc", "/ab", "/a"}
-
-	if len(sorted) != len(expected) {
-		t.Fatalf("expected %d, got %d", len(expected), len(sorted))
-	}
-	if !slices.Equal(sorted, expected) {
-		t.Errorf("try_files sorted incorrectly: got %v, want %v", sorted, expected)
 	}
 
 	CheckUsagePool(t)

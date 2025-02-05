@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -15,11 +16,18 @@ import (
 	"go.uber.org/zap"
 )
 
+type orderMatcher struct {
+	path string
+	ext  string
+}
+
 type Order struct {
 	Host     string   `json:"host,omitempty"`
 	Match    []string `json:"match,omitempty"`
 	Paths    []string `json:"paths,omitempty"`
 	CatchAll []string `json:"catch_all,omitempty"`
+
+	matchers []orderMatcher `json:"-"`
 }
 
 type outputTarget struct {
@@ -49,22 +57,44 @@ var (
 	_ caddy.Destructor = (*execCmd)(nil)
 )
 
-func (s *execCmd) UpdateOrder(order Order) {
-	sort.Slice(order.Match, func(i, j int) bool {
-		if len(order.Match[i]) != len(order.Match[j]) {
-			return len(order.Match[i]) > len(order.Match[j])
+func (o *Order) Submit(cmd *execCmd) {
+	o.matchers = make([]orderMatcher, 0, len(o.Match))
+	for _, m := range o.Match {
+		dir := filepath.Join("/", filepath.Dir(m))
+		name := filepath.Base(m)
+		if name[0] != '*' {
+			continue
 		}
-		return order.Match[i] < order.Match[j]
+		ext := filepath.Ext(name)
+		if dir[len(dir)-1] != '/' {
+			dir += "/"
+		}
+
+		o.matchers = append(o.matchers, orderMatcher{dir, ext})
+	}
+
+	sort.Slice(o.matchers, func(i, j int) bool {
+		if len(o.matchers[i].path) != len(o.matchers[j].path) {
+			return len(o.matchers[i].path) > len(o.matchers[j].path)
+		}
+		if o.matchers[i].path != o.matchers[j].path {
+			return o.matchers[i].path < o.matchers[j].path
+		}
+
+		if len(o.matchers[i].ext) != len(o.matchers[j].ext) {
+			return len(o.matchers[i].ext) > len(o.matchers[j].ext)
+		}
+		return o.matchers[i].ext < o.matchers[j].ext
 	})
 
-	sort.Slice(order.CatchAll, func(i, j int) bool {
-		if len(order.CatchAll[i]) != len(order.CatchAll[j]) {
-			return len(order.CatchAll[i]) > len(order.CatchAll[j])
+	sort.Slice(o.CatchAll, func(i, j int) bool {
+		if len(o.CatchAll[i]) != len(o.CatchAll[j]) {
+			return len(o.CatchAll[i]) > len(o.CatchAll[j])
 		}
-		return order.CatchAll[i] < order.CatchAll[j]
+		return o.CatchAll[i] < o.CatchAll[j]
 	})
 
-	s.Order = &order
+	cmd.Order = o
 }
 
 // After you create an execCmd, we check if there's one with the same hash

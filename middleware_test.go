@@ -51,13 +51,14 @@ func TestFindBestResource(t *testing.T) {
 		"weird/path/index.html": {Data: []byte("weird")},
 	}
 	order := &Order{
-		Match:    []string{".html"},
+		Match:    []string{"*.html"},
 		CatchAll: []string{"/blog/index.html"},
 	}
 	sh := &SubstrateHandler{
 		fs:  mfs,
-		Cmd: &execCmd{Order: order},
+		Cmd: &execCmd{},
 	}
+	order.Submit(sh.Cmd)
 
 	tests := []struct {
 		reqPath string
@@ -87,33 +88,6 @@ func TestFindBestResource(t *testing.T) {
 	CheckUsagePool(t)
 }
 
-func TestEnableReverseProxy(t *testing.T) {
-	sh := &SubstrateHandler{
-		Cmd: &execCmd{
-			Order: &Order{
-				Match: []string{".jpg", ".png"},
-			},
-		},
-	}
-	tests := []struct {
-		path     string
-		expected bool
-	}{
-		{"/image.jpg", true},
-		{"/image.png", true},
-		{"/image.gif", false},
-	}
-	for _, tt := range tests {
-		r := &http.Request{URL: &url.URL{Path: tt.path}}
-		got := sh.enableReverseProxy(r)
-		if got != tt.expected {
-			t.Errorf("enableReverseProxy(%q) = %v; want %v", tt.path, got, tt.expected)
-		}
-	}
-
-	CheckUsagePool(t)
-}
-
 func TestServeHTTP(t *testing.T) {
 	mfs := fstest.MapFS{
 		"about.html":      {Data: []byte("about")},
@@ -122,15 +96,16 @@ func TestServeHTTP(t *testing.T) {
 	order := &Order{
 		CatchAll: []string{"index.html"},
 		Host:     "example.com",
-		Match:    []string{".html"},
+		Match:    []string{"*.html"},
 	}
 	drp := NewDummyReverseProxy()
 	sh := &SubstrateHandler{
 		fs:    mfs,
 		log:   zap.NewNop(),
 		proxy: drp,
-		Cmd:   &execCmd{Order: order},
+		Cmd:   &execCmd{},
 	}
+	order.Submit(sh.Cmd)
 	next := &dummyHandler{}
 
 	repl := caddy.NewReplacer()

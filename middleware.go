@@ -40,15 +40,22 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 		return &reqPath
 	}
 
-	for _, suffix := range s.Cmd.Order.Match {
-		bigPath := reqPath + "/index" + suffix
+	for _, m := range s.Cmd.Order.matchers {
+		if !strings.HasPrefix(reqPath, m.path) {
+			continue
+		}
+
+		bigPath := reqPath + "/index" + m.ext
 		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
 			return &bigPath
 		}
 	}
 
-	for _, suffix := range s.Cmd.Order.Match {
-		bigPath := reqPath + suffix
+	for _, m := range s.Cmd.Order.matchers {
+		if !strings.HasPrefix(reqPath, m.path) {
+			continue
+		}
+		bigPath := reqPath + m.ext
 		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
 			return &bigPath
 		}
@@ -68,15 +75,6 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 	}
 
 	return nil
-}
-
-func (s *SubstrateHandler) enableReverseProxy(r *http.Request) bool {
-	for _, ext := range s.Cmd.Order.Match {
-		if strings.HasSuffix(r.URL.Path, ext) {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *SubstrateHandler) matchPath(r *http.Request) bool {
@@ -99,13 +97,16 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 
 	if !forceProxy {
 		match := s.findBestResource(r)
-		if match != nil && *match != r.URL.Path {
-			r.Header.Set("X-Forwarded-Path", r.URL.Path)
-			r.URL.Path = *match
+		if match != nil {
+			forceProxy = true
+			if *match != r.URL.Path {
+				r.Header.Set("X-Forwarded-Path", r.URL.Path)
+				r.URL.Path = *match
+			}
 		}
 	}
 
-	if forceProxy || s.enableReverseProxy(r) {
+	if forceProxy {
 		s.proxy.SetHost(s.Cmd.Order.Host)
 		return s.proxy.ServeHTTP(w, r, next)
 	}

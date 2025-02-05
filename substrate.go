@@ -3,11 +3,9 @@ package substrate
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"log"
 	"math"
 	"math/big"
-	"net/http"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
@@ -98,38 +96,6 @@ func (h *App) registerCmd(c *execCmd) *execCmd {
 	outcmd := out.(*execCmd)
 	h.cmds[key] = outcmd
 	return outcmd
-}
-
-func (h *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if r.Header.Get("Content-Type") != "application/json" {
-		http.Error(w, "Unsupported Media Type", http.StatusUnsupportedMediaType)
-		return
-	}
-
-	key := r.URL.Path[1:]
-
-	sub, ok := h.cmds[key]
-	if !ok {
-		http.Error(w, "Not Found", http.StatusNotFound)
-		h.log.Error("Substrate not found", zap.String("key", key))
-		return
-	}
-
-	h.log.Info("Substrate", zap.Any("sub", sub), zap.String("key", key))
-
-	var order Order
-	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
-		http.Error(w, "Bad Request", http.StatusBadRequest)
-		h.log.Error("Error unmarshalling order", zap.Error(err))
-		return
-	}
-
-	h.log.Info("Received order", zap.Any("order", order))
-	sub.UpdateOrder(order)
 }
 
 func (h *App) Start() error {
