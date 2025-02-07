@@ -1,4 +1,4 @@
-module substrate
+module github.com/fserb/substrate
 
 go 1.23.5
 
