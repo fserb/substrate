@@ -69,11 +69,9 @@ func TestServeHTTPWithoutOrder(t *testing.T) {
 	if err := sh.ServeHTTP(rr, req, next); err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
-	if rr.Code != http.StatusInternalServerError {
-		t.Errorf("expected status 500, got %d", rr.Code)
-	}
-	if next.called {
-		t.Error("next handler should not be called when Order is nil")
+
+	if !next.called {
+		t.Error("next handler should be called when Order is nil")
 	}
 
 	CheckUsagePool(t)
@@ -115,6 +113,10 @@ func TestServeHTTPWithOrder(t *testing.T) {
 	}
 	if !drp.called {
 		t.Error("proxy was not called")
+	}
+
+	if next.called {
+		t.Error("next handler should not be called")
 	}
 
 	CheckUsagePool(t)

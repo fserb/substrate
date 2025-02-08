@@ -89,8 +89,7 @@ func (s *SubstrateHandler) matchPath(r *http.Request) bool {
 
 func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	if s.Cmd == nil || s.Cmd.Order == nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return nil
+		return next.ServeHTTP(w, r)
 	}
 
 	forceProxy := s.matchPath(r)
