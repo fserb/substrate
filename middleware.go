@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+	"go.uber.org/zap"
 )
 
 func (s *SubstrateHandler) fileExists(path string) bool {
@@ -43,6 +44,8 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 
 		bigPath := reqPath + "/index" + m.ext
 		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
+			s.log.Debug("found resource", zap.String("root", root), zap.String("path", bigPath),
+				zap.Any("matcher", m))
 			return &bigPath
 		}
 	}
@@ -53,6 +56,8 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 		}
 		bigPath := reqPath + m.ext
 		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
+			s.log.Debug("found resource", zap.String("root", root), zap.String("path", bigPath),
+				zap.Any("matcher", m))
 			return &bigPath
 		}
 	}
@@ -65,6 +70,8 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 			}
 			candidate := caddyhttp.SanitizedPathJoin(root, ca)
 			if s.fileExists(candidate) {
+				s.log.Debug("found catch alll", zap.String("root", root),
+					zap.String("catchAll", ca))
 				return &ca
 			}
 		}
