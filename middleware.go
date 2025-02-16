@@ -70,7 +70,7 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 			}
 			candidate := caddyhttp.SanitizedPathJoin(root, ca)
 			if s.fileExists(candidate) {
-				s.log.Debug("found catch alll", zap.String("root", root),
+				s.log.Debug("found catch all", zap.String("root", root),
 					zap.String("catchAll", ca))
 				return &ca
 			}
@@ -83,6 +83,7 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 func (s *SubstrateHandler) matchPath(r *http.Request) bool {
 	for _, p := range s.Cmd.Order.Paths {
 		if p == r.URL.Path {
+			s.log.Debug("matched path", zap.String("path", p), zap.String("request_path", r.URL.Path))
 			return true
 		}
 	}
@@ -109,6 +110,7 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 	}
 
 	if useProxy {
+		s.log.Debug("proxying request", zap.String("path", r.URL.Path))
 		s.proxy.SetHost(s.Cmd.Order.Host)
 		return s.proxy.ServeHTTP(w, r, next)
 	}
