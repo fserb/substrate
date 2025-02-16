@@ -156,6 +156,9 @@ func (s *execCmd) Run() {
 	if s.cancel != nil {
 		return
 	}
+	if s.Command == nil || len(s.Command) == 0 {
+		return
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel

@@ -36,10 +36,6 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 
 	reqPath := r.URL.Path
 
-	if s.fileExists(caddyhttp.SanitizedPathJoin(root, reqPath)) {
-		return &reqPath
-	}
-
 	for _, m := range s.Cmd.Order.matchers {
 		if !strings.HasPrefix(reqPath, m.path) {
 			continue
@@ -92,12 +88,12 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 		return next.ServeHTTP(w, r)
 	}
 
-	forceProxy := s.matchPath(r)
+	useProxy := s.matchPath(r)
 
-	if !forceProxy {
+	if !useProxy {
 		match := s.findBestResource(r)
 		if match != nil {
-			forceProxy = true
+			useProxy = true
 			if *match != r.URL.Path {
 				r.Header.Set("X-Forwarded-Path", r.URL.Path)
 				r.URL.Path = *match
@@ -105,7 +101,7 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 		}
 	}
 
-	if forceProxy {
+	if useProxy {
 		s.proxy.SetHost(s.Cmd.Order.Host)
 		return s.proxy.ServeHTTP(w, r, next)
 	}
