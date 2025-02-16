@@ -38,13 +38,15 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 	reqPath := r.URL.Path
 
 	for _, m := range s.Cmd.Order.matchers {
+		s.log.Debug("checking matcher", zap.String("path", m.path), zap.String("request_path", reqPath), zap.String("ext", m.ext))
+
 		if !strings.HasPrefix(reqPath, m.path) {
 			continue
 		}
 
 		bigPath := reqPath + "/index" + m.ext
 		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
-			s.log.Debug("found resource", zap.String("root", root), zap.String("path", bigPath),
+			s.log.Debug("found index resource", zap.String("root", root), zap.String("path", bigPath),
 				zap.Any("matcher", m))
 			return &bigPath
 		}

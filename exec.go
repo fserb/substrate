@@ -62,10 +62,10 @@ func (o *Order) Submit(cmd *execCmd) {
 	for _, m := range o.Match {
 		dir := filepath.Join("/", filepath.Dir(m))
 		name := filepath.Base(m)
-		if name[0] != '*' {
+		if name[0] != '*' || name[1] != '.' {
 			continue
 		}
-		ext := filepath.Ext(name)
+		ext := name[2:]
 		if dir[len(dir)-1] != '/' {
 			dir += "/"
 		}
