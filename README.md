@@ -86,7 +86,7 @@ Substrate will start your proxy command and set up a `SUBSTRATE` env var with a 
 Once your proxy is running, it should send a `POST` request to this URL, containing a
 JSON, with the following format:
 
-```json
+```js
 {
   host: "localhost:3333", // the host:port where the proxy is listening at.
   match: [".ext"],        // the list of file extensions we should listen to.
