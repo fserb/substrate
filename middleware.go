@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
-	"go.uber.org/zap"
 )
 
 func (s *SubstrateHandler) fileExists(path string) bool {
@@ -38,7 +37,6 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 	reqPath := r.URL.Path
 
 	for _, m := range s.Cmd.Order.matchers {
-		s.log.Debug("checking matcher", zap.String("path", m.path), zap.String("request_path", reqPath), zap.String("ext", m.ext))
 
 		if !strings.HasPrefix(reqPath, m.path) {
 			continue
@@ -46,8 +44,6 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 
 		bigPath := reqPath + "/index" + m.ext
 		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
-			s.log.Debug("found index resource", zap.String("root", root), zap.String("path", bigPath),
-				zap.Any("matcher", m))
 			return &bigPath
 		}
 	}
@@ -58,8 +54,6 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 		}
 		bigPath := reqPath + m.ext
 		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
-			s.log.Debug("found resource", zap.String("root", root), zap.String("path", bigPath),
-				zap.Any("matcher", m))
 			return &bigPath
 		}
 	}
@@ -72,8 +66,6 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 			}
 			candidate := caddyhttp.SanitizedPathJoin(root, ca)
 			if s.fileExists(candidate) {
-				s.log.Debug("found catch all", zap.String("root", root),
-					zap.String("catchAll", ca))
 				return &ca
 			}
 		}
@@ -85,7 +77,6 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 func (s *SubstrateHandler) matchPath(r *http.Request) bool {
 	for _, p := range s.Cmd.Order.Paths {
 		if p == r.URL.Path {
-			s.log.Debug("matched path", zap.String("path", p), zap.String("request_path", r.URL.Path))
 			return true
 		}
 	}
@@ -112,7 +103,6 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 	}
 
 	if useProxy {
-		s.log.Debug("proxying request", zap.String("path", r.URL.Path))
 		s.proxy.SetHost(s.Cmd.Order.Host)
 		return s.proxy.ServeHTTP(w, r, next)
 	}

@@ -65,7 +65,7 @@ func (o *Order) Submit(cmd *execCmd) {
 		if name[0] != '*' || name[1] != '.' {
 			continue
 		}
-		ext := name[2:]
+		ext := name[1:]
 		if dir[len(dir)-1] != '/' {
 			dir += "/"
 		}
