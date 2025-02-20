@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	httpcache "github.com/caddyserver/cache-handler"
 	"github.com/caddyserver/caddy/v2"
 	"go.uber.org/zap"
 )
@@ -98,9 +99,37 @@ func (s *Server) Destruct() error {
 	return nil
 }
 
+func clearCache() error {
+	mod, err := caddy.GetModule("http.handlers.cache")
+	if err != nil {
+		return nil
+	}
+
+	mw := mod.New()
+	souinMW, ok := mw.(*httpcache.SouinCaddyMiddleware)
+	if !ok {
+		return fmt.Errorf("failed to assert cache MW")
+	}
+
+	souinMW.Cleanup()
+
+	return nil
+
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.app == nil {
 		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	if r.Method == "GET" && r.URL.Path == "/reset" {
+		err := clearCache()
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			s.log.Error("Error clearing cache", zap.Error(err))
+			return
+		}
 		return
 	}
 

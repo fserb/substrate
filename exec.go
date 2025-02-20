@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"time"
@@ -124,14 +125,19 @@ func (s *execCmd) newExecCommand() *exec.Cmd {
 	cmd := exec.Command(s.Command[0], s.Command[1:]...)
 	configureSysProcAttr(cmd)
 
+	configureExecutingUser(cmd, s.User)
+
 	env := os.Environ()
 	for key, value := range s.Env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
 	env = append(env, fmt.Sprintf("SUBSTRATE=%s/%s", s.host, s.Key()))
+	u, err := user.Lookup(s.User)
+	if err == nil {
+		env = append(env, fmt.Sprintf("HOME=%s", u.HomeDir))
+		env = append(env, fmt.Sprintf("USER=%s", u.Username))
+	}
 	cmd.Env = env
-
-	configureExecutingUser(cmd, s.User)
 
 	cmd.Dir = s.Dir
 
