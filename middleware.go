@@ -1,6 +1,7 @@
 package substrate
 
 import (
+	"fmt"
 	"io/fs"
 	"net/http"
 	"path"
@@ -34,7 +35,7 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 		root = "."
 	}
 
-	reqPath := r.URL.Path
+	reqPath := caddyhttp.CleanPath(r.URL.Path, true)
 
 	for _, m := range s.Cmd.Order.matchers {
 
@@ -42,7 +43,7 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 			continue
 		}
 
-		bigPath := reqPath + "/index" + m.ext
+		bigPath := caddyhttp.CleanPath(reqPath+"/index"+m.ext, true)
 		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
 			return &bigPath
 		}
@@ -95,10 +96,7 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 		match := s.findBestResource(r)
 		if match != nil {
 			useProxy = true
-			if *match != r.URL.Path {
-				r.Header.Set("X-Forwarded-Path", r.URL.Path)
-				r.URL.Path = *match
-			}
+			r.URL.Path = *match
 		}
 	}
 
@@ -107,6 +105,15 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 		if s.Cmd.Prefix != "" {
 			r.URL.Path = strings.TrimPrefix(r.URL.Path, s.Cmd.Prefix)
 		}
+		var scheme string
+		if r.TLS == nil {
+			scheme = "http"
+		} else {
+			scheme = "https"
+		}
+		r.Header.Set("X-Forwarded-Path", r.RequestURI)
+		r.Header.Set("X-Forwarded-BaseURL",
+			fmt.Sprintf("%s://%s%s", scheme, r.Host, s.Cmd.Prefix))
 		return s.proxy.ServeHTTP(w, r, next)
 	}
 
