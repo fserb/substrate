@@ -42,6 +42,7 @@ type execCmd struct {
 	Env            map[string]string `json:"env,omitempty"`
 	User           string            `json:"user,omitempty"`
 	Dir            string            `json:"dir,omitempty"`
+	Prefix         string            `json:"prefix,omitempty"`
 	RedirectStdout *outputTarget     `json:"redirect_stdout,omitempty"`
 	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
 	RestartPolicy  string            `json:"restart_policy,omitempty"`

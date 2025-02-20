@@ -104,6 +104,9 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 
 	if useProxy {
 		s.proxy.SetHost(s.Cmd.Order.Host)
+		if s.Cmd.Prefix != "" {
+			r.URL.Path = strings.TrimPrefix(r.URL.Path, s.Cmd.Prefix)
+		}
 		return s.proxy.ServeHTTP(w, r, next)
 	}
 

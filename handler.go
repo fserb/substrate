@@ -21,16 +21,17 @@ const (
 
 // Syntax:
 //
-//		substrate {
-//		  command <cmdline>
-//	    env <key> <value>
-//	    user <username>
-//			dir <directory>
+//			substrate {
+//			  command <cmdline>
+//		    env <key> <value>
+//		    user <username>
+//				dir <directory>
+//	     prefix <url-prefix>
 //
-//		 	restart_policy always|never|on_failure
-//			redirect_stdout stdout|stderr|null|file <filename>
-//		  redirect_stderr stderr
-//		}
+//			 	restart_policy always|never|on_failure
+//				redirect_stdout stdout|stderr|null|file <filename>
+//			  redirect_stderr stderr
+//			}
 func init() {
 	caddy.RegisterModule(SubstrateHandler{})
 	httpcaddyfile.RegisterHandlerDirective("substrate", parseSubstrateHandler)
@@ -165,6 +166,12 @@ func (s *SubstrateHandler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				return h.ArgErr()
 			}
 			s.Cmd.Dir = dir
+		case "prefix":
+			var prefix string
+			if !h.Args(&prefix) {
+				return h.ArgErr()
+			}
+			s.Cmd.Prefix = prefix
 		case "redirect_stdout":
 			target, err := parseRedirect(h)
 			if err != nil {
