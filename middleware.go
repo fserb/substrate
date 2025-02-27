@@ -37,8 +37,11 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 
 	reqPath := caddyhttp.CleanPath(r.URL.Path, true)
 
-	for _, m := range s.Cmd.Order.matchers {
+	if s.fileExists(caddyhttp.SanitizedPathJoin(root, reqPath)) {
+		return &reqPath
+	}
 
+	for _, m := range s.Cmd.Order.matchers {
 		if !strings.HasPrefix(reqPath, m.path) {
 			continue
 		}

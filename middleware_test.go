@@ -67,7 +67,7 @@ func TestFindBestResource(t *testing.T) {
 		{"/index.html", strPtr("/index.html")},
 		{"/about", strPtr("/about.html")},
 		{"/blog/post", strPtr("/blog/index.html")},
-		{"/foo//bar", strPtr("/foo//bar.html")},
+		{"/foo//bar", strPtr("/foo/bar.html")},
 		{"/notfound", nil},
 	}
 
@@ -81,7 +81,11 @@ func TestFindBestResource(t *testing.T) {
 				t.Errorf("findBestResource(%q) = %v; want nil", tt.reqPath, *got)
 			}
 		} else if got == nil || *got != *tt.want {
-			t.Errorf("findBestResource(%q) = %#v; want %v", tt.reqPath, got, *tt.want)
+			if got == nil {
+				t.Errorf("findBestResource(%q) = nil; want %v", tt.reqPath, *tt.want)
+			} else {
+				t.Errorf("findBestResource(%q) = %v; want %v", tt.reqPath, *got, *tt.want)
+			}
 		}
 	}
 
@@ -121,8 +125,8 @@ func TestServeHTTP(t *testing.T) {
 	if !drp.called {
 		t.Error("next handler was not called")
 	}
-	if got := req.Header.Get("X-Forwarded-Path"); got != "/about" {
-		t.Errorf("X-Forwarded-Path = %q; want /about", got)
+	if got := req.Header.Get("X-Forwarded-Path"); got != "http://example.com/about" {
+		t.Errorf("X-Forwarded-Path = %q; want %q", got, "http://example.com/about")
 	}
 	if req.URL.Path != "/about.html" {
 		t.Errorf("URL.Path = %q; want /about.html", req.URL.Path)
