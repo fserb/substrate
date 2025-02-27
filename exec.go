@@ -59,7 +59,7 @@ var (
 	_ caddy.Destructor = (*execCmd)(nil)
 )
 
-func (o *Order) Submit(cmd *execCmd) {
+func (s *execCmd) Submit(o *Order) {
 	o.matchers = make([]orderMatcher, 0, len(o.Match))
 	for _, m := range o.Match {
 		dir := filepath.Join("/", filepath.Dir(m))
@@ -96,7 +96,7 @@ func (o *Order) Submit(cmd *execCmd) {
 		return o.CatchAll[i] < o.CatchAll[j]
 	})
 
-	cmd.Order = o
+	s.Order = o
 }
 
 // After you create an execCmd, we check if there's one with the same hash
