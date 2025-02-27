@@ -21,17 +21,7 @@ const (
 
 // Syntax:
 //
-//			substrate {
-//			  command <cmdline>
-//		    env <key> <value>
-//		    user <username>
-//				dir <directory>
-//	     prefix <url-prefix>
-//
-//			 	restart_policy always|never|on_failure
-//				redirect_stdout stdout|stderr|null|file <filename>
-//			  redirect_stderr stderr
-//			}
+//	substrate {}
 func init() {
 	caddy.RegisterModule(SubstrateHandler{})
 	httpcaddyfile.RegisterHandlerDirective("substrate", parseSubstrateHandler)
@@ -132,93 +122,14 @@ func (s *SubstrateHandler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 	var h httpcaddyfile.Helper = httpcaddyfile.Helper{Dispenser: d}
 
 	h.Next()
-
 	s.Cmd = &execCmd{}
 
+	// Skip any blocks - we don't need any configuration
 	for h.NextBlock(0) {
-		switch h.Val() {
-		case "command":
-			if !h.NextArg() {
-				return h.ArgErr()
-			}
-			s.Cmd.Command = append([]string{h.Val()}, h.RemainingArgs()...)
-
-		case "env":
-			var envKey, envValue string
-			if !h.Args(&envKey, &envValue) {
-				return h.ArgErr()
-			}
-			if s.Cmd.Env == nil {
-				s.Cmd.Env = map[string]string{}
-			}
-			s.Cmd.Env[envKey] = envValue
-		case "user":
-			var user string
-
-			if !h.Args(&user) {
-				return h.ArgErr()
-			}
-
-			s.Cmd.User = user
-		case "dir":
-			var dir string
-			if !h.Args(&dir) {
-				return h.ArgErr()
-			}
-			s.Cmd.Dir = dir
-		case "prefix":
-			var prefix string
-			if !h.Args(&prefix) {
-				return h.ArgErr()
-			}
-			s.Cmd.Prefix = prefix
-		case "redirect_stdout":
-			target, err := parseRedirect(h)
-			if err != nil {
-				return err
-			}
-			s.Cmd.RedirectStdout = target
-		case "redirect_stderr":
-			target, err := parseRedirect(h)
-			if err != nil {
-				return err
-			}
-			s.Cmd.RedirectStderr = target
-		case "restart_policy":
-			var p string
-			if !h.Args(&p) {
-				return h.ArgErr()
-			}
-			if p != "always" && p != "never" && p != "on_failure" {
-				return h.Errf("Invalid restart policy: %s", p)
-			}
-			s.Cmd.RestartPolicy = p
-		}
+		// Ignore all directives
 	}
 
 	return nil
-}
-
-func parseRedirect(h httpcaddyfile.Helper) (*outputTarget, error) {
-	if !h.NextArg() {
-		return nil, h.ArgErr()
-	}
-
-	var target outputTarget
-	target.Type = h.Val()
-
-	switch target.Type {
-	case "stdout", "null", "stderr":
-		return &target, nil
-	case "file":
-		if !h.NextArg() {
-			return nil, h.ArgErr()
-		}
-		target.File = h.Val()
-		return &target, nil
-	}
-
-	return nil, h.Errf("Invalid redirect target: %s", target.Type)
 }
 
 func parseSubstrateHandler(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {

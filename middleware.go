@@ -105,9 +105,6 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 
 	if useProxy {
 		s.proxy.SetHost(s.Cmd.Order.Host)
-		if s.Cmd.Prefix != "" {
-			r.URL.Path = strings.TrimPrefix(r.URL.Path, s.Cmd.Prefix)
-		}
 		var scheme string
 		if r.TLS == nil {
 			scheme = "http"
@@ -116,7 +113,7 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 		}
 		r.Header.Set("X-Forwarded-Path", r.RequestURI)
 		r.Header.Set("X-Forwarded-BaseURL",
-			fmt.Sprintf("%s://%s%s", scheme, r.Host, s.Cmd.Prefix))
+			fmt.Sprintf("%s://%s", scheme, r.Host))
 		return s.proxy.ServeHTTP(w, r, next)
 	}
 

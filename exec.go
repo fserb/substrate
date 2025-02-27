@@ -42,7 +42,6 @@ type execCmd struct {
 	Env            map[string]string `json:"env,omitempty"`
 	User           string            `json:"user,omitempty"`
 	Dir            string            `json:"dir,omitempty"`
-	Prefix         string            `json:"prefix,omitempty"`
 	RedirectStdout *outputTarget     `json:"redirect_stdout,omitempty"`
 	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
 	RestartPolicy  string            `json:"restart_policy,omitempty"`
@@ -103,6 +102,24 @@ func (s *execCmd) Submit(o *Order) {
 // in store. If there is, we replace your cmd with the live one.
 func (s *execCmd) Register(app *App) *execCmd {
 	s.log = app.log.With(zap.String("key", s.Key()))
+	
+	// Apply global configuration
+	if app.Env != nil && (s.Env == nil || len(s.Env) == 0) {
+		s.Env = app.Env
+	}
+	
+	if s.RestartPolicy == "" {
+		s.RestartPolicy = app.RestartPolicy
+	}
+	
+	if s.RedirectStdout == nil {
+		s.RedirectStdout = app.RedirectStdout
+	}
+	
+	if s.RedirectStderr == nil {
+		s.RedirectStderr = app.RedirectStderr
+	}
+	
 	return app.registerCmd(s)
 }
 

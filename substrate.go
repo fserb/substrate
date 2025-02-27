@@ -3,6 +3,7 @@ package substrate
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"math"
 	"math/big"
@@ -43,9 +44,13 @@ var (
 )
 
 type App struct {
-	cmds   map[string]*execCmd
-	server *Server
-	log    *zap.Logger
+	cmds           map[string]*execCmd
+	server         *Server
+	log            *zap.Logger
+	Env            map[string]string `json:"env,omitempty"`
+	RestartPolicy  string            `json:"restart_policy,omitempty"`
+	RedirectStdout *outputTarget     `json:"redirect_stdout,omitempty"`
+	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
 }
 
 func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) {
@@ -56,10 +61,69 @@ func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) 
 		*app = *cur
 	}
 
+	for d.Next() {
+		for d.NextBlock(0) {
+			switch d.Val() {
+			case "env":
+				var envKey, envValue string
+				if !d.Args(&envKey, &envValue) {
+					return nil, d.ArgErr()
+				}
+				if app.Env == nil {
+					app.Env = map[string]string{}
+				}
+				app.Env[envKey] = envValue
+			case "restart_policy":
+				var p string
+				if !d.Args(&p) {
+					return nil, d.ArgErr()
+				}
+				if p != "always" && p != "never" && p != "on_failure" {
+					return nil, fmt.Errorf("Invalid restart policy: %s", p)
+				}
+				app.RestartPolicy = p
+			case "redirect_stdout":
+				target, err := parseRedirectGlobal(d)
+				if err != nil {
+					return nil, err
+				}
+				app.RedirectStdout = target
+			case "redirect_stderr":
+				target, err := parseRedirectGlobal(d)
+				if err != nil {
+					return nil, err
+				}
+				app.RedirectStderr = target
+			}
+		}
+	}
+
 	return httpcaddyfile.App{
 		Name:  "substrate",
 		Value: caddyconfig.JSON(app, nil),
 	}, nil
+}
+
+func parseRedirectGlobal(d *caddyfile.Dispenser) (*outputTarget, error) {
+	if !d.NextArg() {
+		return nil, d.ArgErr()
+	}
+
+	var target outputTarget
+	target.Type = d.Val()
+
+	switch target.Type {
+	case "stdout", "null", "stderr":
+		return &target, nil
+	case "file":
+		if !d.NextArg() {
+			return nil, d.ArgErr()
+		}
+		target.File = d.Val()
+		return &target, nil
+	}
+
+	return nil, fmt.Errorf("Invalid redirect target: %s", target.Type)
 }
 
 func (App) CaddyModule() caddy.ModuleInfo {
