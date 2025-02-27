@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestOrderSubmit(t *testing.T) {
+func TestExecCmdSubmit(t *testing.T) {
 	order := &Order{
 		Match: []string{
 			"/foo/*.txt", "/foo/*.md", "/bar/*.log", "/baz/*.json",
@@ -15,7 +15,7 @@ func TestOrderSubmit(t *testing.T) {
 	}
 
 	cmd := &execCmd{}
-	order.Submit(cmd)
+	cmd.Submit(order)
 
 	// Verify matchers
 	expectedMatchers := []orderMatcher{

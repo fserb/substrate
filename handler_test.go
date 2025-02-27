@@ -86,10 +86,10 @@ func TestServeHTTPWithOrder(t *testing.T) {
 		log:   zap.NewNop(),
 	}
 
-	(&Order{
+	sh.Cmd.Submit(&Order{
 		Host:  "http://localhost:1234",
 		Match: []string{"*.html"},
-	}).Submit(sh.Cmd)
+	})
 
 	req, err := http.NewRequest("GET", "/foo", nil)
 	if err != nil {

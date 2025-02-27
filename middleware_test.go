@@ -58,7 +58,7 @@ func TestFindBestResource(t *testing.T) {
 		fs:  mfs,
 		Cmd: &execCmd{},
 	}
-	order.Submit(sh.Cmd)
+	sh.Cmd.Submit(order)
 
 	tests := []struct {
 		reqPath string
@@ -105,7 +105,7 @@ func TestServeHTTP(t *testing.T) {
 		proxy: drp,
 		Cmd:   &execCmd{},
 	}
-	order.Submit(sh.Cmd)
+	sh.Cmd.Submit(order)
 	next := &dummyHandler{}
 
 	repl := caddy.NewReplacer()
