@@ -5,6 +5,7 @@
 
 :4321 {
 	root example/
+
 	substrate {
 		command deno run -A example/example.js
 	}

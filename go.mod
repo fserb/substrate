@@ -8,7 +8,7 @@ require (
 	go.uber.org/zap v1.27.0
 )
 
-replace github.com/fserb/substrate v0.0.0-20250207070327-85568cf42fc8 => .
+replace github.com/fserb/substrate => .
 
 require (
 	dario.cat/mergo v1.0.1 // indirect
