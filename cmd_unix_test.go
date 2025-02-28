@@ -57,4 +57,3 @@ func TestCmdUnix_CommandOutput_SwitchUser(t *testing.T) {
 		t.Errorf("expected user %q, got %q", targetUser, got)
 	}
 }
-

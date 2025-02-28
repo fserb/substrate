@@ -104,4 +104,3 @@ func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 func parseSubstrateHandler(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
 	return &SubstrateHandler{}, nil
 }
-

@@ -224,4 +224,3 @@ func TestGetRedirectFile(t *testing.T) {
 
 	CheckUsagePool(t)
 }
-

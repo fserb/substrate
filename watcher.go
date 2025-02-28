@@ -263,15 +263,21 @@ func (w *Watcher) Close() error {
 
 // IsReady returns true if the watcher has a command with an order
 func (w *Watcher) IsReady() bool {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
 	return w.cmd != nil && w.Order != nil
 }
 
 // WaitUntilReady waits for the watcher to be ready or determines it has no substrate
 // Returns true if the watcher is ready, false if there's no substrate
 func (w *Watcher) WaitUntilReady(timeout time.Duration) bool {
-	if w.IsReady() {
+	// Use mutex to safely check if ready
+	w.mutex.Lock()
+	if w.cmd != nil && w.Order != nil {
+		w.mutex.Unlock()
 		return true
 	}
+	w.mutex.Unlock()
 
 	// If there's no substrate file at all, don't wait
 	if _, err := os.Stat(filepath.Join(w.Root, "substrate")); os.IsNotExist(err) {
@@ -281,7 +287,11 @@ func (w *Watcher) WaitUntilReady(timeout time.Duration) bool {
 	// Wait for the watcher to be ready with timeout
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if w.IsReady() {
+		w.mutex.Lock()
+		ready := w.cmd != nil && w.Order != nil
+		w.mutex.Unlock()
+
+		if ready {
 			return true
 		}
 		time.Sleep(50 * time.Millisecond) // Short sleep to avoid busy waiting
@@ -355,4 +365,3 @@ func (w *Watcher) Submit(o *Order) {
 		oldCmd.Stop()
 	}
 }
-

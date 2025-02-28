@@ -35,4 +35,3 @@ func TestExecCmdSubmit(t *testing.T) {
 		t.Errorf("Expected cmd.Order to be set, got nil")
 	}
 }
-

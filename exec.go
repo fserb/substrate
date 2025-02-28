@@ -46,11 +46,18 @@ func (s *execCmd) newExecCommand() *exec.Cmd {
 	for key, value := range s.Env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
-	env = append(env, fmt.Sprintf("SUBSTRATE=%s/%s", s.watcher.server.Host, s.watcher.key))
-	u, err := user.Lookup(s.User)
-	if err == nil {
-		env = append(env, fmt.Sprintf("HOME=%s", u.HomeDir))
-		env = append(env, fmt.Sprintf("USER=%s", u.Username))
+
+	// Check if watcher and server are not nil before accessing
+	if s.watcher != nil && s.watcher.server != nil {
+		env = append(env, fmt.Sprintf("SUBSTRATE=%s/%s", s.watcher.server.Host, s.watcher.key))
+	}
+
+	if s.User != "" {
+		u, err := user.Lookup(s.User)
+		if err == nil {
+			env = append(env, fmt.Sprintf("HOME=%s", u.HomeDir))
+			env = append(env, fmt.Sprintf("USER=%s", u.Username))
+		}
 	}
 	cmd.Env = env
 
@@ -58,12 +65,16 @@ func (s *execCmd) newExecCommand() *exec.Cmd {
 
 	outFile, err := getRedirectFile(s.RedirectStdout, "stdout")
 	if err != nil {
-		s.log.Error("Error opening process stdout", zap.Error(err))
+		if s.log != nil {
+			s.log.Error("Error opening process stdout", zap.Error(err))
+		}
 		outFile = nil
 	}
 	errFile, err := getRedirectFile(s.RedirectStderr, "stderr")
 	if err != nil {
-		s.log.Error("Error opening process stderr", zap.Error(err))
+		if s.log != nil {
+			s.log.Error("Error opening process stderr", zap.Error(err))
+		}
 		errFile = nil
 	}
 
@@ -181,4 +192,3 @@ func (s *execCmd) Destruct() error {
 	s.Stop()
 	return nil
 }
-

@@ -139,4 +139,3 @@ func TestServeHTTP(t *testing.T) {
 
 	CheckUsagePool(t)
 }
-

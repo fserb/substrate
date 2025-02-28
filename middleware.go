@@ -30,7 +30,7 @@ func (s *SubstrateHandler) fileExists(path string) bool {
 }
 
 func (s *SubstrateHandler) findBestResource(r *http.Request, watcher *Watcher) *string {
-	if watcher.Order == nil {
+	if watcher == nil || watcher.Order == nil {
 		return nil
 	}
 
@@ -46,28 +46,30 @@ func (s *SubstrateHandler) findBestResource(r *http.Request, watcher *Watcher) *
 		return &reqPath
 	}
 
-	for _, m := range watcher.Order.matchers {
-		if !strings.HasPrefix(reqPath, m.path) {
-			continue
+	if watcher.Order.matchers != nil {
+		for _, m := range watcher.Order.matchers {
+			if !strings.HasPrefix(reqPath, m.path) {
+				continue
+			}
+
+			bigPath := caddyhttp.CleanPath(reqPath+"/index"+m.ext, true)
+			if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
+				return &bigPath
+			}
 		}
 
-		bigPath := caddyhttp.CleanPath(reqPath+"/index"+m.ext, true)
-		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
-			return &bigPath
+		for _, m := range watcher.Order.matchers {
+			if !strings.HasPrefix(reqPath, m.path) {
+				continue
+			}
+			bigPath := reqPath + m.ext
+			if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
+				return &bigPath
+			}
 		}
 	}
 
-	for _, m := range watcher.Order.matchers {
-		if !strings.HasPrefix(reqPath, m.path) {
-			continue
-		}
-		bigPath := reqPath + m.ext
-		if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
-			return &bigPath
-		}
-	}
-
-	if len(watcher.Order.CatchAll) > 0 {
+	if watcher.Order.CatchAll != nil && len(watcher.Order.CatchAll) > 0 {
 		for _, ca := range watcher.Order.CatchAll {
 			cad := path.Dir(ca)
 			if !strings.HasPrefix(reqPath, cad) {
@@ -84,7 +86,11 @@ func (s *SubstrateHandler) findBestResource(r *http.Request, watcher *Watcher) *
 }
 
 func (s *SubstrateHandler) matchPath(r *http.Request, watcher *Watcher) bool {
-	if watcher.Order == nil {
+	if watcher == nil || watcher.Order == nil {
+		return false
+	}
+
+	if watcher.Order.Paths == nil {
 		return false
 	}
 
@@ -147,4 +153,3 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 
 	return next.ServeHTTP(w, r)
 }
-

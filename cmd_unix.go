@@ -33,4 +33,3 @@ func configureExecutingUser(cmd *exec.Cmd, username string) {
 		}
 	}
 }
-

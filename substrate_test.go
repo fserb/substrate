@@ -58,4 +58,3 @@ func TestApp_Start_Stop_UsagePool(t *testing.T) {
 
 	CheckUsagePool(t)
 }
-

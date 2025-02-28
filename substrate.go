@@ -163,18 +163,29 @@ func (h *App) Start() error {
 func (h *App) Stop() error {
 	h.log.Info("Stopping substrate")
 
-	// Clean up the server
+	// Get the server before deleting it from the pool
+	obj, loaded := pool.LoadOrStore("server", nil)
+	if loaded && obj != nil {
+		server, ok := obj.(*Server)
+		if ok && server != nil {
+			server.Stop()
+		}
+	}
+
+	// Clean up the server from the pool
 	pool.Delete("server")
 
 	// Clean up all watchers in the pool
 	watcherPool.Range(func(key, value any) bool {
-		watcher := value.(*Watcher)
-		if watcher.cmd == nil && watcher.newCmd == nil {
-			watcher.Close()
+		if value != nil {
+			watcher, ok := value.(*Watcher)
+			if ok && watcher != nil {
+				watcher.Close()
+			}
 		}
+		watcherPool.Delete(key)
 		return true
 	})
 
 	return nil
 }
-

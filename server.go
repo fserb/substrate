@@ -126,7 +126,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		err := clearCache()
 		if err != nil {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			s.log.Error("Error clearing cache", zap.Error(err))
+			if s.log != nil {
+				s.log.Error("Error clearing cache", zap.Error(err))
+			}
 			return
 		}
 		return
@@ -147,7 +149,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	watcher := GetWatcher(key)
 	if watcher == nil {
 		http.Error(w, "Not Found", http.StatusNotFound)
-		s.log.Error("Substrate not found", zap.String("key", key))
+		if s.log != nil {
+			s.log.Error("Substrate not found", zap.String("key", key))
+		}
 		return
 	}
 
@@ -163,21 +167,28 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if cmd == nil {
 		http.Error(w, "Not Found", http.StatusNotFound)
-		s.log.Error("Substrate not found", zap.String("key", key))
+		if s.log != nil {
+			s.log.Error("Substrate not found", zap.String("key", key))
+		}
 		return
 	}
 
-	s.log.Info("Substrate", zap.String("key", key))
+	if s.log != nil {
+		s.log.Info("Substrate", zap.String("key", key))
+	}
 
 	var order Order
 	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
-		s.log.Error("Error unmarshalling order", zap.Error(err))
+		if s.log != nil {
+			s.log.Error("Error unmarshalling order", zap.Error(err))
+		}
 		return
 	}
 
-	s.log.Info("Received order", zap.String("key", key), zap.Any("order", order))
+	if s.log != nil {
+		s.log.Info("Received order", zap.String("key", key), zap.Any("order", order))
+	}
 
 	watcher.Submit(&order)
 }
-
