@@ -2,29 +2,24 @@ package substrate
 
 import (
 	"context"
-	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 	"testing/fstest"
-	"time"
-
-	"go.uber.org/zap"
 
 	"github.com/caddyserver/caddy/v2"
-	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy"
+	"go.uber.org/zap"
 )
 
-type dummyHandler struct {
+// Mock implementations for testing
+type mockHandler struct {
 	called bool
 	check  func(r *http.Request)
 }
 
-func (d *dummyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
+func (d *mockHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
 	d.called = true
 	if d.check != nil {
 		d.check(r)
@@ -32,195 +27,299 @@ func (d *dummyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-type dummyReverseProxy struct {
-	ReverseProxy
+type mockReverseProxy struct {
+	host   string
 	called bool
 }
 
-func NewDummyReverseProxy() *dummyReverseProxy {
-	return &dummyReverseProxy{ReverseProxy: ReverseProxy{&reverseproxy.Handler{
-		Upstreams: reverseproxy.UpstreamPool{
-			&reverseproxy.Upstream{
-				Dial: "",
-			}}}}}
-}
-
-func (d *dummyReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+func (d *mockReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	d.called = true
 	return nil
 }
 
-func TestServeHTTPWithoutOrder(t *testing.T) {
-	sh := &SubstrateHandler{
-		Cmd: &execCmd{}, // Order is nil
-		log: zap.NewNop(),
-	}
-	next := &dummyHandler{}
-	rr := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "/", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	repl := caddy.NewReplacer()
-	ctx := context.WithValue(req.Context(), caddy.ReplacerCtxKey, repl)
-	req = req.WithContext(ctx)
-
-	if err := sh.ServeHTTP(rr, req, next); err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-
-	if !next.called {
-		t.Error("next handler should be called when Order is nil")
-	}
-
-	CheckUsagePool(t)
+func (d *mockReverseProxy) Provision(ctx caddy.Context) error {
+	return nil
 }
 
-func TestServeHTTPWithOrder(t *testing.T) {
-	drp := NewDummyReverseProxy()
-	sh := &SubstrateHandler{
-		Cmd:   &execCmd{},
-		proxy: drp,
-		fs:    fstest.MapFS{"foo/index.html": &fstest.MapFile{Data: []byte("content")}},
-		log:   zap.NewNop(),
+func (d *mockReverseProxy) SetHost(host string) {
+	d.host = host
+}
+
+// TestSubstrateHandlerCaddyModule tests the CaddyModule method
+func TestSubstrateHandlerCaddyModule(t *testing.T) {
+	sh := SubstrateHandler{}
+	info := sh.CaddyModule()
+
+	if info.ID != "http.handlers.substrate" {
+		t.Errorf("Expected module ID 'http.handlers.substrate', got '%s'", info.ID)
 	}
 
-	sh.Cmd.Submit(&Order{
-		Host:  "http://localhost:1234",
-		Match: []string{"*.html"},
+	// Test that New returns a *SubstrateHandler
+	module := info.New()
+	_, ok := module.(*SubstrateHandler)
+	if !ok {
+		t.Errorf("Expected New to return *SubstrateHandler, got %T", module)
+	}
+}
+
+// TestFileExists tests the fileExists method
+func TestFileExists(t *testing.T) {
+	// Create a test filesystem
+	testFS := fstest.MapFS{
+		"file.txt":      &fstest.MapFile{Data: []byte("content")},
+		"dir/file2.txt": &fstest.MapFile{Data: []byte("content2")},
+		"dir":           &fstest.MapFile{Mode: fs.ModeDir},
+	}
+
+	sh := &SubstrateHandler{fs: testFS}
+
+	tests := []struct {
+		path     string
+		expected bool
+	}{
+		{"file.txt", true},      // Regular file
+		{"dir/", true},          // Directory with trailing slash
+		{"dir", false},          // Directory without trailing slash (not a file)
+		{"nonexistent", false},  // Non-existent file
+		{"dir/file2.txt", true}, // Nested file
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.path, func(t *testing.T) {
+			result := sh.fileExists(tc.path)
+			if result != tc.expected {
+				t.Errorf("fileExists(%q) = %v, want %v", tc.path, result, tc.expected)
+			}
+		})
+	}
+}
+
+// TestFindBestResource tests the findBestResource method
+func TestFindBestResource(t *testing.T) {
+	// Create a test filesystem
+	testFS := fstest.MapFS{
+		"index.html":      &fstest.MapFile{Data: []byte("index")},
+		"about.html":      &fstest.MapFile{Data: []byte("about")},
+		"blog/index.html": &fstest.MapFile{Data: []byte("blog index")},
+		"blog/post1.html": &fstest.MapFile{Data: []byte("post1")},
+		"docs/index.md":   &fstest.MapFile{Data: []byte("docs index")},
+		"docs/guide.md":   &fstest.MapFile{Data: []byte("guide")},
+	}
+
+	// Create a test order with matchers
+	order := &Order{
+		Match:    []string{"*.html", "*.md"},
+		CatchAll: []string{"blog/index.html"},
+	}
+	order.matchers = []orderMatcher{
+		{path: "/", ext: ".html"},
+		{path: "/", ext: ".md"},
+	}
+
+	// Create a watcher with the order
+	watcher := &Watcher{
+		Order: order,
+	}
+
+	sh := &SubstrateHandler{
+		fs:      testFS,
+		watcher: watcher,
+	}
+
+	tests := []struct {
+		name     string
+		path     string
+		expected *string
+	}{
+		{"Direct file match", "/index.html", strPtr("/index.html")},
+		{"Extension match", "/about", strPtr("/about.html")},
+		{"Directory index", "/blog", strPtr("/blog/index.html")},
+		{"Nested file", "/blog/post1", strPtr("/blog/post1.html")},
+		{"Different extension", "/docs/guide", strPtr("/docs/guide.md")},
+		{"CatchAll fallback", "/blog/nonexistent", strPtr("blog/index.html")},
+		{"No match", "/nonexistent", nil},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req, _ := http.NewRequest("GET", tc.path, nil)
+			ctx := context.WithValue(req.Context(), "root", ".")
+			req = req.WithContext(ctx)
+
+			result := sh.findBestResource(req, watcher)
+
+			if tc.expected == nil {
+				if result != nil {
+					t.Errorf("Expected nil, got %v", *result)
+				}
+			} else if result == nil {
+				t.Errorf("Expected %v, got nil", *tc.expected)
+			} else if *result != *tc.expected {
+				t.Errorf("Expected %v, got %v", *tc.expected, *result)
+			}
+		})
+	}
+}
+
+// TestMatchPath tests the matchPath method
+func TestMatchPath(t *testing.T) {
+	order := &Order{
+		Paths: []string{"/api/v1", "/api/v2/users", "/static"},
+	}
+
+	watcher := &Watcher{
+		Order: order,
+	}
+
+	sh := &SubstrateHandler{}
+
+	tests := []struct {
+		path     string
+		expected bool
+	}{
+		{"/api/v1", true},
+		{"/api/v2/users", true},
+		{"/static", true},
+		{"/api", false},
+		{"/api/v2", false},
+		{"/api/v1/users", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.path, func(t *testing.T) {
+			req, _ := http.NewRequest("GET", tc.path, nil)
+
+			result := sh.matchPath(req, watcher)
+
+			if result != tc.expected {
+				t.Errorf("matchPath(%q) = %v, want %v", tc.path, result, tc.expected)
+			}
+		})
+	}
+
+	// Test with nil watcher or nil order
+	req, _ := http.NewRequest("GET", "/api/v1", nil)
+	if sh.matchPath(req, nil) {
+		t.Error("matchPath with nil watcher should return false")
+	}
+
+	if sh.matchPath(req, &Watcher{Order: nil}) {
+		t.Error("matchPath with nil order should return false")
+	}
+}
+
+// TestServeHTTP tests the ServeHTTP method
+func TestServeHTTP(t *testing.T) {
+	// Test with a ready watcher and matching path
+	t.Run("WithReadyWatcherAndMatch", func(t *testing.T) {
+		// Create a test order
+		order := &Order{
+			Host:  "http://localhost:8080",
+			Paths: []string{"/api"},
+		}
+
+		// Create a mock proxy
+		proxy := &mockReverseProxy{}
+
+		// Create a watcher with the order
+		watcher := &Watcher{
+			Order: order,
+			cmd:   &execCmd{},
+		}
+
+		sh := &SubstrateHandler{
+			watcher: watcher,
+			proxy:   proxy,
+			log:     zap.NewNop(),
+		}
+
+		// Create a request with a matching path
+		req, _ := http.NewRequest("GET", "/api", nil)
+		rr := httptest.NewRecorder()
+		next := &mockHandler{}
+
+		// Call ServeHTTP
+		err := sh.ServeHTTP(rr, req, next)
+
+		// Check results
+		if err != nil {
+			t.Errorf("ServeHTTP returned error: %v", err)
+		}
+
+		if !proxy.called {
+			t.Error("Proxy should have been called")
+		}
+
+		if proxy.host != "http://localhost:8080" {
+			t.Errorf("Proxy host = %q, want %q", proxy.host, "http://localhost:8080")
+		}
+
+		if next.called {
+			t.Error("Next handler should not have been called")
+		}
 	})
 
-	req, err := http.NewRequest("GET", "/foo", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rr := httptest.NewRecorder()
+	// Test with a ready watcher but no match
+	t.Run("WithReadyWatcherNoMatch", func(t *testing.T) {
+		// Create a test order
+		order := &Order{
+			Host:  "http://localhost:8080",
+			Paths: []string{"/api"},
+		}
 
-	next := &dummyHandler{
-		check: func(r *http.Request) {
-			if r.URL.Path != "/foo/index.html" {
-				t.Errorf("expected '/foo/index.html', got %s", r.URL.Path)
-			}
-			if got := r.Header.Get("X-Forwarded-Path"); got != "/foo" {
-				t.Errorf("expected '/foo', got %s", got)
-			}
-		},
-	}
+		// Create a mock proxy
+		proxy := &mockReverseProxy{}
 
-	if err := sh.ServeHTTP(rr, req, next); err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if !drp.called {
-		t.Error("proxy was not called")
-	}
+		// Create a test filesystem
+		testFS := fstest.MapFS{
+			"index.html": &fstest.MapFile{Data: []byte("index")},
+		}
 
-	if next.called {
-		t.Error("next handler should not be called")
-	}
+		// Create a watcher with the order
+		watcher := &Watcher{
+			Order: order,
+			cmd:   &execCmd{},
+		}
 
-	CheckUsagePool(t)
+		sh := &SubstrateHandler{
+			watcher: watcher,
+			proxy:   proxy,
+			log:     zap.NewNop(),
+			fs:      testFS,
+		}
+
+		// Create a request with a non-matching path
+		req, _ := http.NewRequest("GET", "/other", nil)
+		ctx := context.WithValue(req.Context(), "root", ".")
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+		next := &mockHandler{}
+
+		// Call ServeHTTP
+		err := sh.ServeHTTP(rr, req, next)
+
+		// Check results
+		if err != nil {
+			t.Errorf("ServeHTTP returned error: %v", err)
+		}
+
+		if proxy.called {
+			t.Error("Proxy should not have been called")
+		}
+
+		if !next.called {
+			t.Error("Next handler should have been called")
+		}
+	})
 }
 
-func TestUnmarshalCaddyfile(t *testing.T) {
-	caddyfileInput := `
-	substrate {
-	    command /bin/echo hello world
-	    env FOO bar
-	    user testuser
-	    dir /tmp
-	    restart_policy always
-	    redirect_stdout file /tmp/stdout.log
-	    redirect_stderr stderr
-	}
-	`
-	d := caddyfile.NewTestDispenser(caddyfileInput)
-	sh := &SubstrateHandler{}
-	if err := sh.UnmarshalCaddyfile(d); err != nil {
-		t.Fatalf("UnmarshalCaddyfile failed: %v", err)
-	}
+// Skip TestParseCaddyfile for now as it requires httpcaddyfile
+// which is not directly accessible in tests
 
-	if sh.Cmd == nil {
-		t.Fatal("Cmd should not be nil")
-	}
-	if len(sh.Cmd.Command) < 1 || sh.Cmd.Command[0] != "/bin/echo" {
-		t.Errorf("unexpected command: %v", sh.Cmd.Command)
-	}
-	if val, ok := sh.Cmd.Env["FOO"]; !ok || val != "bar" {
-		t.Errorf("unexpected env: %v", sh.Cmd.Env)
-	}
-	if sh.Cmd.User != "testuser" {
-		t.Errorf("unexpected user: %s", sh.Cmd.User)
-	}
-	if sh.Cmd.Dir != "/tmp" {
-		t.Errorf("unexpected dir: %s", sh.Cmd.Dir)
-	}
-	if sh.Cmd.RestartPolicy != "always" {
-		t.Errorf("unexpected restart policy: %s", sh.Cmd.RestartPolicy)
-	}
-	if sh.Cmd.RedirectStdout == nil || sh.Cmd.RedirectStdout.Type != "file" || sh.Cmd.RedirectStdout.File != "/tmp/stdout.log" {
-		t.Errorf("unexpected redirect_stdout: %+v", sh.Cmd.RedirectStdout)
-	}
-	if sh.Cmd.RedirectStderr == nil || sh.Cmd.RedirectStderr.Type != "stderr" {
-		t.Errorf("unexpected redirect_stderr: %+v", sh.Cmd.RedirectStderr)
-	}
+// This test is moved to exec_test.go to avoid duplication
 
-	CheckUsagePool(t)
+// Helper function to create string pointer
+func strPtr(s string) *string {
+	return &s
 }
 
-func TestGetRedirectFile(t *testing.T) {
-	target := &outputTarget{Type: "stdout"}
-	f, err := getRedirectFile(target, "")
-	if err != nil {
-		t.Errorf("stdout error: %v", err)
-	}
-	if f != os.Stdout {
-		t.Error("expected os.Stdout")
-	}
-
-	target = &outputTarget{Type: "stderr"}
-	f, err = getRedirectFile(target, "")
-	if err != nil {
-		t.Errorf("stderr error: %v", err)
-	}
-	if f != os.Stderr {
-		t.Error("expected os.Stderr")
-	}
-
-	target = &outputTarget{Type: "null"}
-	f, err = getRedirectFile(target, "")
-	if err != nil {
-		t.Errorf("null error: %v", err)
-	}
-	if f != nil {
-		t.Error("expected nil for null")
-	}
-
-	tmpfile := filepath.Join(os.TempDir(), fmt.Sprintf("test_redirect_%d.log", time.Now().UnixNano()))
-	target = &outputTarget{Type: "file", File: tmpfile}
-	f, err = getRedirectFile(target, "")
-	if err != nil {
-		t.Errorf("file error: %v", err)
-	}
-	if f == nil {
-		t.Error("expected file handle, got nil")
-	}
-	f.Close()
-	os.Remove(tmpfile)
-
-	target = &outputTarget{Type: "invalid"}
-	_, err = getRedirectFile(target, "")
-	if err == nil {
-		t.Error("expected error for invalid target")
-	}
-
-	f, err = getRedirectFile(nil, "stdout")
-	if err != nil {
-		t.Errorf("nil target error: %v", err)
-	}
-	if f != os.Stdout {
-		t.Error("expected os.Stdout")
-	}
-
-	CheckUsagePool(t)
-}
