@@ -99,21 +99,24 @@ func (s *Server) Destruct() error {
 }
 
 func clearCache() error {
-	mod, err := caddy.GetModule("http.handlers.cache")
+	currentCtx := caddy.ActiveContext()
+
+	app, err := currentCtx.AppIfConfigured("cache")
 	if err != nil {
 		return nil
 	}
 
-	mw := mod.New()
-	souinMW, ok := mw.(*httpcache.SouinCaddyMiddleware)
+	handler, ok := app.(*httpcache.SouinApp)
 	if !ok {
-		return fmt.Errorf("failed to assert cache MW")
+		return nil
 	}
 
-	souinMW.Cleanup()
+	cache := &httpcache.SouinCaddyMiddleware{}
+	cache.FromApp(handler)
+
+	cache.Cleanup()
 
 	return nil
-
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -192,3 +195,4 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	watcher.Submit(&order)
 }
+

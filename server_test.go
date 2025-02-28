@@ -174,43 +174,6 @@ func TestServerServeHTTP(t *testing.T) {
 			t.Errorf("Expected status %d, got %d", http.StatusNotFound, rr.Code)
 		}
 	})
-
-	// Test reset endpoint
-	// 	t.Run("ResetEndpoint", func(t *testing.T) {
-	// 		server := &Server{
-	// 			log: zap.NewNop(),
-	// 			app: &App{},
-	// 		}
-	//
-	// 		req := httptest.NewRequest("GET", "/reset", nil)
-	// 		rr := httptest.NewRecorder()
-	//
-	// 		// Create a variable to track if clearCache would be called
-	// 		clearCacheCalled := false
-	//
-	// 		// Save the original function
-	// 		originalFunc := clearCache
-	//
-	// 		// Replace with a test version
-	// 		clearCacheTest := func() error {
-	// 			clearCacheCalled = true
-	// 			return nil
-	// 		}
-	//
-	// 		// Use the test version for this test
-	// 		clearCache = clearCacheTest
-	// 		defer func() { clearCache = originalFunc }()
-	//
-	// 		server.ServeHTTP(rr, req)
-	//
-	// 		if !clearCacheCalled {
-	// 			t.Error("clearCache was not called")
-	// 		}
-	//
-	// 		if rr.Code != http.StatusOK {
-	// 			t.Errorf("Expected status %d, got %d", http.StatusOK, rr.Code)
-	// 		}
-	// 	})
 }
 
 func TestServerSubmitOrder(t *testing.T) {
