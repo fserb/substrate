@@ -100,7 +100,9 @@ func (s *execCmd) Run() {
 cmdLoop:
 	for {
 		cmd = s.newExecCommand()
-		s.log.Info("Starting command", zap.String("command", s.Command[0]))
+		if s.log != nil {
+			s.log.Info("Starting command", zap.String("command", s.Command[0]))
+		}
 		start := time.Now()
 
 		if err := cmd.Start(); err != nil {

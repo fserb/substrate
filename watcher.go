@@ -206,6 +206,7 @@ func (w *Watcher) startLoading() {
 		Command: []string{filepath.Join(w.Root, "substrate")},
 		Dir:     w.Root,
 		watcher: w,
+		log:     w.log,
 	}
 
 	// If we're root, change to the file owner

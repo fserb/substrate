@@ -12,7 +12,7 @@ import (
 )
 
 // TestGetWatcher tests the GetWatcher function
-func TestGetWatcher(t *testing.T) {
+func TestWatcherGetWatcher(t *testing.T) {
 	// Create a test watcher and register it
 	watcher := &Watcher{
 		Root: "/tmp",
@@ -39,7 +39,7 @@ func TestGetWatcher(t *testing.T) {
 }
 
 // TestGetOrCreateWatcher tests the GetOrCreateWatcher function
-func TestGetOrCreateWatcher(t *testing.T) {
+func TestWatcherGetOrCreateWatcher(t *testing.T) {
 	// Create a temporary directory for testing
 	tmpDir, err := os.MkdirTemp("", "watcher-test")
 	if err != nil {
