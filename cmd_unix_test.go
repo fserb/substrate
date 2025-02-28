@@ -10,7 +10,7 @@ import (
 )
 
 // TestConfigureSysProcAttr tests the configureSysProcAttr function
-func TestConfigureSysProcAttr(t *testing.T) {
+func TestCmdConfigureSysProcAttr(t *testing.T) {
 	cmd := exec.Command("echo", "test")
 
 	// Configure the process attributes
@@ -31,7 +31,7 @@ func TestConfigureSysProcAttr(t *testing.T) {
 }
 
 // TestConfigureExecutingUser tests the configureExecutingUser function
-func TestConfigureExecutingUser(t *testing.T) {
+func TestCmdConfigureExecutingUser(t *testing.T) {
 	// Test with empty username
 	t.Run("EmptyUsername", func(t *testing.T) {
 		cmd := exec.Command("echo", "test")
@@ -75,7 +75,7 @@ func TestConfigureExecutingUser(t *testing.T) {
 
 // TestCommandOutputSwitchUser tests switching to a different user
 // This test requires root privileges
-func TestCommandOutputSwitchUser(t *testing.T) {
+func TestCmdCommandOutputSwitchUser(t *testing.T) {
 	currentUser, err := user.Current()
 	if err != nil {
 		t.Fatal(err)
