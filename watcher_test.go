@@ -11,48 +11,36 @@ import (
 	"go.uber.org/zap"
 )
 
-// TestGetWatcher tests the GetWatcher function
 func TestWatcherGetWatcher(t *testing.T) {
-	// Create a test watcher and register it
 	watcher := &Watcher{
 		Root: "/tmp",
 		key:  "test-key",
 	}
 
-	// Store the watcher in the pool
 	watcherPool.LoadOrStore("test-key", watcher)
 	defer watcherPool.Delete("test-key")
 
-	// Test getting an existing watcher
 	result := GetWatcher("test-key")
-	// Only compare the key and Root fields since other fields might be different
 	if result.key != watcher.key || result.Root != watcher.Root {
 		t.Errorf("GetWatcher returned watcher with key=%s, Root=%s, want key=%s, Root=%s",
 			result.key, result.Root, watcher.key, watcher.Root)
 	}
 
-	// Test getting a non-existent watcher
 	result = GetWatcher("nonexistent")
 	if result != nil {
 		t.Errorf("GetWatcher returned %v, want nil", result)
 	}
 }
 
-// TestGetOrCreateWatcher tests the GetOrCreateWatcher function
 func TestWatcherGetOrCreateWatcher(t *testing.T) {
-	// Create a temporary directory for testing
 	tmpDir, err := os.MkdirTemp("", "watcher-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Create a test app
-	app := &App{
-		log: zap.NewNop(),
-	}
+	app := &App{log: zap.NewNop()}
 
-	// Test creating a new watcher
 	watcher := GetOrCreateWatcher(tmpDir, app)
 	if watcher == nil {
 		t.Fatal("GetOrCreateWatcher returned nil")
@@ -66,19 +54,15 @@ func TestWatcherGetOrCreateWatcher(t *testing.T) {
 		t.Errorf("Watcher.app = %v, want %v", watcher.app, app)
 	}
 
-	// Test getting an existing watcher
 	result := GetOrCreateWatcher(tmpDir, app)
 	if result != watcher {
 		t.Errorf("GetOrCreateWatcher returned %v, want %v", result, watcher)
 	}
 
-	// Clean up
 	watcher.Close()
 }
 
-// TestWatcherIsReady tests the IsReady method
 func TestWatcherIsReady(t *testing.T) {
-	// Create a test watcher
 	watcher := &Watcher{
 		mutex: sync.Mutex{},
 	}
@@ -101,7 +85,6 @@ func TestWatcherIsReady(t *testing.T) {
 	}
 }
 
-// TestWatcherWaitUntilReady tests the WaitUntilReady method
 func TestWatcherWaitUntilReady(t *testing.T) {
 	// Create a test watcher
 	watcher := &Watcher{
@@ -149,15 +132,12 @@ func TestWatcherWaitUntilReady(t *testing.T) {
 	}
 }
 
-// TestWatcherSubmit tests the Submit method
 func TestWatcherSubmit(t *testing.T) {
-	// Create a test watcher
 	watcher := &Watcher{
 		mutex: sync.Mutex{},
 		log:   zap.NewNop(),
 	}
 
-	// Create a test order
 	order := &Order{
 		Host:     "http://localhost:8080",
 		Match:    []string{"*.html", "*.md"},
@@ -165,15 +145,12 @@ func TestWatcherSubmit(t *testing.T) {
 		CatchAll: []string{"/index.html", "/404.html"},
 	}
 
-	// Create a test command
 	oldCmd := &execCmd{}
 	watcher.cmd = oldCmd
 
-	// Create a new command
 	newCmd := &execCmd{}
 	watcher.newCmd = newCmd
 
-	// Submit the order
 	watcher.Submit(order)
 
 	// Verify the order was processed
@@ -196,9 +173,7 @@ func TestWatcherSubmit(t *testing.T) {
 	}
 }
 
-// TestWatcherClose tests the Close method
 func TestWatcherClose(t *testing.T) {
-	// Create a temporary directory for testing
 	tmpDir, err := os.MkdirTemp("", "watcher-close-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -216,10 +191,8 @@ func TestWatcherClose(t *testing.T) {
 		t.Fatal("GetOrCreateWatcher returned nil")
 	}
 
-	// Store the key for later verification
 	key := watcher.key
 
-	// Create test commands
 	watcher.cmd = &execCmd{}
 	watcher.newCmd = &execCmd{}
 
@@ -229,7 +202,6 @@ func TestWatcherClose(t *testing.T) {
 		t.Errorf("Close() returned error: %v", err)
 	}
 
-	// Verify resources were cleaned up
 	if watcher.cancel != nil {
 		t.Error("cancel function was not cleared")
 	}
@@ -246,27 +218,22 @@ func TestWatcherClose(t *testing.T) {
 		t.Error("newCmd was not cleared")
 	}
 
-	// Verify watcher was removed from pool
 	if obj, loaded := watcherPool.LoadOrStore(key, nil); loaded {
 		t.Errorf("Watcher was not removed from pool, got %v", obj)
 	}
 }
 
-// TestWatcherWatch tests the watch method
 func TestWatcherWatch(t *testing.T) {
-	// Create a temporary directory for testing
 	tmpDir, err := os.MkdirTemp("", "watcher-watch-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Create a test app
 	app := &App{
 		log: zap.NewNop(),
 	}
 
-	// Create a watcher
 	watcher := &Watcher{
 		Root:  tmpDir,
 		app:   app,
@@ -274,35 +241,28 @@ func TestWatcherWatch(t *testing.T) {
 		mutex: sync.Mutex{},
 	}
 
-	// Initialize the watcher
 	err = watcher.init()
 	if err != nil {
 		t.Fatalf("init() returned error: %v", err)
 	}
 
-	// Ensure watcher.watcher is not nil before proceeding
 	if watcher.watcher == nil {
 		t.Fatal("watcher.watcher is nil after init()")
 	}
 
-	// Create a context with cancel
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start watching in a goroutine
 	go watcher.watch(ctx)
 
-	// Create a substrate file
 	substratePath := filepath.Join(tmpDir, "substrate")
 	err = os.WriteFile(substratePath, []byte("#!/bin/sh\necho test"), 0755)
 	if err != nil {
 		t.Fatalf("Failed to create substrate file: %v", err)
 	}
 
-	// Wait for the watcher to detect the file
 	time.Sleep(100 * time.Millisecond)
 
-	// Verify the watcher started loading
 	watcher.mutex.Lock()
 	hasNewCmd := watcher.newCmd != nil
 	watcher.mutex.Unlock()
@@ -311,15 +271,13 @@ func TestWatcherWatch(t *testing.T) {
 		t.Error("Watcher did not start loading after substrate file creation")
 	}
 
-	// Remove the substrate file
 	err = os.Remove(substratePath)
 	if err != nil {
 		t.Fatalf("Failed to remove substrate file: %v", err)
 	}
 
-	// Wait for the watcher to detect the removal
 	time.Sleep(100 * time.Millisecond)
 
-	// Clean up
 	watcher.Close()
 }
+

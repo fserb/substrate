@@ -13,7 +13,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// Mock implementations for testing
 type mockHandler struct {
 	called bool
 	check  func(r *http.Request)
@@ -45,20 +44,15 @@ func (d *mockReverseProxy) SetHost(host string) {
 	d.host = host
 }
 
-// TestServeHTTP tests the ServeHTTP method
 func TestMWServeHTTP(t *testing.T) {
-	// Test with a ready watcher and matching path
 	t.Run("WithReadyWatcherAndMatch", func(t *testing.T) {
-		// Create a test order
 		order := &Order{
 			Host:  "http://localhost:8080",
 			Paths: []string{"/api"},
 		}
 
-		// Create a mock proxy
 		proxy := &mockReverseProxy{}
 
-		// Create a watcher with the order
 		watcher := &Watcher{
 			Order: order,
 			cmd:   &execCmd{},
@@ -70,15 +64,12 @@ func TestMWServeHTTP(t *testing.T) {
 			log:     zap.NewNop(),
 		}
 
-		// Create a request with a matching path
 		req, _ := http.NewRequest("GET", "/api", nil)
 		rr := httptest.NewRecorder()
 		next := &mockHandler{}
 
-		// Call ServeHTTP
 		err := sh.ServeHTTP(rr, req, next)
 
-		// Check results
 		if err != nil {
 			t.Errorf("ServeHTTP returned error: %v", err)
 		}
@@ -96,23 +87,18 @@ func TestMWServeHTTP(t *testing.T) {
 		}
 	})
 
-	// Test with a ready watcher but no match
 	t.Run("WithReadyWatcherNoMatch", func(t *testing.T) {
-		// Create a test order
 		order := &Order{
 			Host:  "http://localhost:8080",
 			Paths: []string{"/api"},
 		}
 
-		// Create a mock proxy
 		proxy := &mockReverseProxy{}
 
-		// Create a test filesystem
 		testFS := fstest.MapFS{
 			"index.html": &fstest.MapFile{Data: []byte("index")},
 		}
 
-		// Create a watcher with the order
 		watcher := &Watcher{
 			Order: order,
 			cmd:   &execCmd{},
@@ -125,17 +111,14 @@ func TestMWServeHTTP(t *testing.T) {
 			fs:      testFS,
 		}
 
-		// Create a request with a non-matching path
 		req, _ := http.NewRequest("GET", "/other", nil)
 		ctx := context.WithValue(req.Context(), "root", ".")
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 		next := &mockHandler{}
 
-		// Call ServeHTTP
 		err := sh.ServeHTTP(rr, req, next)
 
-		// Check results
 		if err != nil {
 			t.Errorf("ServeHTTP returned error: %v", err)
 		}
@@ -150,9 +133,7 @@ func TestMWServeHTTP(t *testing.T) {
 	})
 }
 
-// TestFileExists tests the fileExists method
 func TestMWFileExists(t *testing.T) {
-	// Create a test filesystem
 	testFS := fstest.MapFS{
 		"file.txt":      &fstest.MapFile{Data: []byte("content")},
 		"dir/file2.txt": &fstest.MapFile{Data: []byte("content2")},
@@ -182,9 +163,7 @@ func TestMWFileExists(t *testing.T) {
 	}
 }
 
-// TestFindBestResource tests the findBestResource method
 func TestMWFindBestResource(t *testing.T) {
-	// Create a test filesystem
 	testFS := fstest.MapFS{
 		"index.html":      &fstest.MapFile{Data: []byte("index")},
 		"about.html":      &fstest.MapFile{Data: []byte("about")},
@@ -194,7 +173,6 @@ func TestMWFindBestResource(t *testing.T) {
 		"docs/guide.md":   &fstest.MapFile{Data: []byte("guide")},
 	}
 
-	// Create a test order with matchers
 	order := &Order{
 		Match:    []string{"*.html", "*.md"},
 		CatchAll: []string{"/blog/index.html"},
@@ -204,7 +182,6 @@ func TestMWFindBestResource(t *testing.T) {
 		{path: "/", ext: ".md"},
 	}
 
-	// Create a watcher with the order
 	watcher := &Watcher{
 		Order: order,
 	}
@@ -249,7 +226,6 @@ func TestMWFindBestResource(t *testing.T) {
 	}
 }
 
-// TestMatchPath tests the matchPath method
 func TestMWMatchPath(t *testing.T) {
 	order := &Order{
 		Paths: []string{"/api/v1", "/api/v2/users", "/static"},
@@ -285,7 +261,6 @@ func TestMWMatchPath(t *testing.T) {
 		})
 	}
 
-	// Test with nil watcher or nil order
 	req, _ := http.NewRequest("GET", "/api/v1", nil)
 	if sh.matchPath(req, nil) {
 		t.Error("matchPath with nil watcher should return false")
@@ -296,7 +271,7 @@ func TestMWMatchPath(t *testing.T) {
 	}
 }
 
-// Helper function to create string pointer
 func strPtr(s string) *string {
 	return &s
 }
+

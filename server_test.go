@@ -11,19 +11,16 @@ import (
 	"go.uber.org/zap"
 )
 
-// TestServerStart tests the Start method of the Server
 func TestServerStart(t *testing.T) {
 	server := &Server{
 		log: zap.NewNop(),
 	}
 
-	// Start the server
 	err := server.Start()
 	if err != nil {
 		t.Fatalf("Server.Start() failed: %v", err)
 	}
 
-	// Verify the server is running
 	if server.Host == "" {
 		t.Fatal("Server.Host is empty, server may not be running")
 	}
@@ -32,7 +29,6 @@ func TestServerStart(t *testing.T) {
 		t.Errorf("Server.Host = %q, want prefix 'http://localhost:'", server.Host)
 	}
 
-	// Verify readyCh is closed
 	select {
 	case <-server.readyCh:
 		// Channel is closed as expected
@@ -40,37 +36,30 @@ func TestServerStart(t *testing.T) {
 		t.Error("server.readyCh is not closed")
 	}
 
-	// Clean up
 	server.Stop()
 }
 
-// TestServerWaitForStart tests the WaitForStart method
 func TestServerWaitForStart(t *testing.T) {
 	server := &Server{
 		log: zap.NewNop(),
 	}
 
-	// Start the server
 	err := server.Start()
 	if err != nil {
 		t.Fatalf("Server.Start() failed: %v", err)
 	}
 
-	// Create a test app
 	app := &App{
 		log: zap.NewNop(),
 	}
 
-	// Create a channel to signal when WaitForStart returns
 	done := make(chan struct{})
 
-	// Call WaitForStart in a goroutine
 	go func() {
 		server.WaitForStart(app)
 		close(done)
 	}()
 
-	// Wait for WaitForStart to return or timeout
 	select {
 	case <-done:
 		// WaitForStart returned as expected
@@ -78,34 +67,27 @@ func TestServerWaitForStart(t *testing.T) {
 		t.Fatal("WaitForStart did not return in time")
 	}
 
-	// Verify app was set
 	if server.app != app {
 		t.Error("server.app was not set correctly")
 	}
 
-	// Clean up
 	server.Stop()
 }
 
-// TestServerStop tests the Stop method
 func TestServerStop(t *testing.T) {
 	server := &Server{
 		log: zap.NewNop(),
 	}
 
-	// Start the server
 	err := server.Start()
 	if err != nil {
 		t.Fatalf("Server.Start() failed: %v", err)
 	}
 
-	// Store the host
 	host := server.Host
 
-	// Stop the server
 	server.Stop()
 
-	// Verify the server is stopped
 	if server.Host != "" {
 		t.Errorf("Server.Host = %q, want empty string", server.Host)
 	}
@@ -118,7 +100,6 @@ func TestServerStop(t *testing.T) {
 		t.Error("server.app should be nil")
 	}
 
-	// Try to connect to the server (should fail)
 	client := &http.Client{
 		Timeout: 100 * time.Millisecond,
 	}
@@ -128,9 +109,7 @@ func TestServerStop(t *testing.T) {
 	}
 }
 
-// TestServerServeHTTP tests the ServeHTTP method
 func TestServerServeHTTP(t *testing.T) {
-	// Test with nil app
 	t.Run("NilApp", func(t *testing.T) {
 		server := &Server{
 			log: zap.NewNop(),
@@ -146,7 +125,6 @@ func TestServerServeHTTP(t *testing.T) {
 		}
 	})
 
-	// Test with invalid method
 	t.Run("InvalidMethod", func(t *testing.T) {
 		server := &Server{
 			log: zap.NewNop(),
@@ -163,7 +141,6 @@ func TestServerServeHTTP(t *testing.T) {
 		}
 	})
 
-	// Test with invalid content type
 	t.Run("InvalidContentType", func(t *testing.T) {
 		server := &Server{
 			log: zap.NewNop(),
@@ -181,7 +158,6 @@ func TestServerServeHTTP(t *testing.T) {
 		}
 	})
 
-	// Test with valid request but nonexistent watcher
 	t.Run("NonexistentWatcher", func(t *testing.T) {
 		server := &Server{
 			log: zap.NewNop(),
@@ -237,9 +213,7 @@ func TestServerServeHTTP(t *testing.T) {
 	// 	})
 }
 
-// TestServerSubmitOrder tests submitting an order to a watcher
 func TestServerSubmitOrder(t *testing.T) {
-	// Create a test watcher and register it
 	watcher := &Watcher{
 		Root: "/tmp",
 		key:  "test-key",
@@ -247,37 +221,30 @@ func TestServerSubmitOrder(t *testing.T) {
 		cmd:  &execCmd{},
 	}
 
-	// Store the watcher in the pool
 	watcherPool.LoadOrStore("test-key", watcher)
 	defer watcherPool.Delete("test-key")
 
-	// Create a server
 	server := &Server{
 		log: zap.NewNop(),
 		app: &App{},
 	}
 
-	// Create a test order
 	order := Order{
 		Host:  "http://localhost:8080",
 		Paths: []string{"/api"},
 	}
 
-	// Create a request with the order
 	orderJSON, _ := json.Marshal(order)
 	req := httptest.NewRequest("POST", "/test-key", strings.NewReader(string(orderJSON)))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 
-	// Call ServeHTTP
 	server.ServeHTTP(rr, req)
 
-	// Check response
 	if rr.Code != http.StatusOK {
 		t.Errorf("Expected status %d, got %d", http.StatusOK, rr.Code)
 	}
 
-	// Verify the order was submitted to the watcher
 	if watcher.Order == nil {
 		t.Fatal("Watcher order is nil")
 	}
@@ -290,3 +257,4 @@ func TestServerSubmitOrder(t *testing.T) {
 		t.Errorf("Expected paths [/api], got %v", watcher.Order.Paths)
 	}
 }
+

@@ -129,7 +129,6 @@ func TestExecCmdStop(t *testing.T) {
 	}
 }
 
-// TestGetRedirectFile tests the getRedirectFile function
 func TestExecGetRedirectFile(t *testing.T) {
 	// Test stdout
 	file, err := getRedirectFile(&outputTarget{Type: "stdout"}, "")
@@ -187,9 +186,7 @@ func TestExecGetRedirectFile(t *testing.T) {
 	}
 }
 
-// TestExecCmdSubmit tests the Submit method
 func TestExecCmdSubmit(t *testing.T) {
-	// Create a test order
 	order := &Order{
 		Match: []string{
 			"/foo/*.txt", "/foo/*.md", "/bar/*.log", "/baz/*.json",
@@ -198,9 +195,6 @@ func TestExecCmdSubmit(t *testing.T) {
 		},
 	}
 
-	// execCmd doesn't have an Order field, so we'll just process the order directly
-
-	// Process matchers (copied from Watcher.Submit logic)
 	order.matchers = make([]orderMatcher, 0, len(order.Match))
 	for _, m := range order.Match {
 		dir := filepath.Join("/", filepath.Dir(m))
@@ -216,7 +210,6 @@ func TestExecCmdSubmit(t *testing.T) {
 		order.matchers = append(order.matchers, orderMatcher{dir, ext})
 	}
 
-	// Sort matchers
 	sort.Slice(order.matchers, func(i, j int) bool {
 		if len(order.matchers[i].path) != len(order.matchers[j].path) {
 			return len(order.matchers[i].path) > len(order.matchers[j].path)
@@ -231,7 +224,6 @@ func TestExecCmdSubmit(t *testing.T) {
 		return order.matchers[i].ext < order.matchers[j].ext
 	})
 
-	// Verify matchers were created and sorted correctly
 	expectedMatchers := []orderMatcher{
 		{"/bar/", ".log"},
 		{"/baz/", ".json"},
@@ -245,3 +237,4 @@ func TestExecCmdSubmit(t *testing.T) {
 		t.Errorf("Expected matchers: %+v, got: %+v", expectedMatchers, order.matchers)
 	}
 }
+

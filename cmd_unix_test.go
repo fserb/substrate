@@ -9,14 +9,11 @@ import (
 	"testing"
 )
 
-// TestConfigureSysProcAttr tests the configureSysProcAttr function
 func TestCmdConfigureSysProcAttr(t *testing.T) {
 	cmd := exec.Command("echo", "test")
 
-	// Configure the process attributes
 	configureSysProcAttr(cmd)
 
-	// Verify the attributes were set correctly
 	if cmd.SysProcAttr == nil {
 		t.Fatal("SysProcAttr is nil")
 	}
@@ -30,9 +27,7 @@ func TestCmdConfigureSysProcAttr(t *testing.T) {
 	}
 }
 
-// TestConfigureExecutingUser tests the configureExecutingUser function
 func TestCmdConfigureExecutingUser(t *testing.T) {
-	// Test with empty username
 	t.Run("EmptyUsername", func(t *testing.T) {
 		cmd := exec.Command("echo", "test")
 		configureSysProcAttr(cmd)
@@ -44,7 +39,6 @@ func TestCmdConfigureExecutingUser(t *testing.T) {
 		}
 	})
 
-	// Test with current user
 	t.Run("CurrentUser", func(t *testing.T) {
 		currentUser, err := user.Current()
 		if err != nil {
@@ -60,7 +54,6 @@ func TestCmdConfigureExecutingUser(t *testing.T) {
 			t.Error("Credential should be nil for current user")
 		}
 
-		// Run the command to verify it executes as the current user
 		out, err := cmd.Output()
 		if err != nil {
 			t.Fatalf("Command failed: %v", err)
@@ -73,7 +66,6 @@ func TestCmdConfigureExecutingUser(t *testing.T) {
 	})
 }
 
-// TestCommandOutputSwitchUser tests switching to a different user
 // This test requires root privileges
 func TestCmdCommandOutputSwitchUser(t *testing.T) {
 	currentUser, err := user.Current()
@@ -81,15 +73,11 @@ func TestCmdCommandOutputSwitchUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Skip if not running as root
 	if currentUser.Username != "root" {
 		t.Skip("skipping switch user test; must be run as root")
 	}
 
-	// Test switching to nobody user
-	targetUser := "nobody" // assuming "nobody" exists
-
-	// Look up the target user
+	targetUser := "nobody"
 	_, err = user.Lookup(targetUser)
 	if err != nil {
 		t.Skipf("skipping; user %q not found: %v", targetUser, err)
@@ -104,7 +92,6 @@ func TestCmdCommandOutputSwitchUser(t *testing.T) {
 		t.Fatal("Credential is nil")
 	}
 
-	// Run the command
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("Command failed: %v", err)
@@ -115,3 +102,4 @@ func TestCmdCommandOutputSwitchUser(t *testing.T) {
 		t.Errorf("Command ran as %q, want %q", got, targetUser)
 	}
 }
+
