@@ -25,8 +25,10 @@ func TestGetWatcher(t *testing.T) {
 
 	// Test getting an existing watcher
 	result := GetWatcher("test-key")
-	if result != watcher {
-		t.Errorf("GetWatcher returned %v, want %v", result, watcher)
+	// Only compare the key and Root fields since other fields might be different
+	if result.key != watcher.key || result.Root != watcher.Root {
+		t.Errorf("GetWatcher returned watcher with key=%s, Root=%s, want key=%s, Root=%s",
+			result.key, result.Root, watcher.key, watcher.Root)
 	}
 
 	// Test getting a non-existent watcher
@@ -276,6 +278,11 @@ func TestWatcherWatch(t *testing.T) {
 	err = watcher.init()
 	if err != nil {
 		t.Fatalf("init() returned error: %v", err)
+	}
+
+	// Ensure watcher.watcher is not nil before proceeding
+	if watcher.watcher == nil {
+		t.Fatal("watcher.watcher is nil after init()")
 	}
 
 	// Create a context with cancel

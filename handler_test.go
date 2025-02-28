@@ -99,7 +99,7 @@ func TestFindBestResource(t *testing.T) {
 		{"Directory index", "/blog", strPtr("/blog/index.html")},
 		{"Nested file", "/blog/post1", strPtr("/blog/post1.html")},
 		{"Different extension", "/docs/guide", strPtr("/docs/guide.md")},
-		{"CatchAll fallback", "/blog/nonexistent", strPtr("blog/index.html")},
+		{"CatchAll fallback", "/blog/nonexistent", strPtr("/blog/index.html")},
 		{"No match", "/nonexistent", nil},
 	}
 

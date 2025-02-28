@@ -134,10 +134,20 @@ func (w *Watcher) init() error {
 
 // watch monitors the substrate file for changes
 func (w *Watcher) watch(ctx context.Context) {
+	// Guard against nil watcher at the beginning
+	if w.watcher == nil {
+		return
+	}
+
 	for {
 		select {
 		case event, ok := <-w.watcher.Events:
 			if !ok {
+				return
+			}
+
+			// Guard against nil watcher
+			if w.watcher == nil {
 				return
 			}
 
@@ -171,7 +181,10 @@ func (w *Watcher) watch(ctx context.Context) {
 			if !ok {
 				return
 			}
-			w.log.Error("Watcher error", zap.Error(err))
+			// Guard against nil logger
+			if w.log != nil {
+				w.log.Error("Watcher error", zap.Error(err))
+			}
 
 		case <-ctx.Done():
 			return

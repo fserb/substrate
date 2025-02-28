@@ -78,6 +78,9 @@ func (s *SubstrateHandler) findBestResource(r *http.Request, watcher *Watcher) *
 			candidate := caddyhttp.SanitizedPathJoin(root, ca)
 			if s.fileExists(candidate) {
 				result := ca
+				if !strings.HasPrefix(result, "/") {
+					result = "/" + result
+				}
 				return &result
 			}
 		}
