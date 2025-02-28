@@ -15,8 +15,7 @@ import (
 
 // TestExecCmdNewExecCommand tests the newExecCommand method
 func TestExecCmdNewExecCommand(t *testing.T) {
-	// Create a test execCmd
-	cmd := &execCmd{
+	execCmd := &execCmd{
 		Command: []string{"/bin/echo", "test"},
 		Env:     map[string]string{"TEST_KEY": "test_value"},
 		User:    "",
@@ -24,21 +23,19 @@ func TestExecCmdNewExecCommand(t *testing.T) {
 		log:     zap.NewNop(),
 	}
 
-	// Create the exec.Cmd
-	execCmd := cmd.newExecCommand()
+	cmd := execCmd.newExecCommand()
 
 	// Verify command
-	if execCmd.Path != "/bin/echo" {
-		t.Errorf("Expected path %q, got %q", "/bin/echo", execCmd.Path)
+	if cmd.Path != "/bin/echo" {
+		t.Errorf("Expected path %q, got %q", "/bin/echo", cmd.Path)
 	}
 
-	if len(execCmd.Args) != 2 || execCmd.Args[0] != "/bin/echo" || execCmd.Args[1] != "test" {
-		t.Errorf("Expected args [/bin/echo test], got %v", execCmd.Args)
+	if len(cmd.Args) != 2 || cmd.Args[0] != "/bin/echo" || cmd.Args[1] != "test" {
+		t.Errorf("Expected args [/bin/echo test], got %v", cmd.Args)
 	}
 
-	// Verify environment
 	foundEnv := false
-	for _, env := range execCmd.Env {
+	for _, env := range cmd.Env {
 		if env == "TEST_KEY=test_value" {
 			foundEnv = true
 			break
@@ -49,14 +46,12 @@ func TestExecCmdNewExecCommand(t *testing.T) {
 	}
 
 	// Verify directory
-	if execCmd.Dir != "/tmp" {
-		t.Errorf("Expected dir %q, got %q", "/tmp", execCmd.Dir)
+	if cmd.Dir != "/tmp" {
+		t.Errorf("Expected dir %q, got %q", "/tmp", cmd.Dir)
 	}
 }
 
-// TestExecCmdRun tests the Run method
 func TestExecCmdRun(t *testing.T) {
-	// Create a temporary script file
 	tmpDir, err := os.MkdirTemp("", "exec-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -73,7 +68,6 @@ exit 0
 		t.Fatalf("Failed to write script file: %v", err)
 	}
 
-	// Create a test execCmd
 	cmd := &execCmd{
 		Command:       []string{scriptPath},
 		Dir:           tmpDir,
@@ -81,14 +75,12 @@ exit 0
 		log:           zap.NewNop(),
 	}
 
-	// Run the command in a goroutine
 	done := make(chan struct{})
 	go func() {
 		cmd.Run()
 		close(done)
 	}()
 
-	// Wait for the command to complete or timeout
 	select {
 	case <-done:
 		// Command completed as expected
@@ -96,13 +88,11 @@ exit 0
 		t.Fatal("Command did not complete in time")
 	}
 
-	// Verify the command was run
 	if cmd.cancel != nil {
 		t.Error("cancel function was not cleared")
 	}
 }
 
-// TestExecCmdStop tests the Stop method
 func TestExecCmdStop(t *testing.T) {
 	// Create a test execCmd with a long-running command
 	cmd := &execCmd{
@@ -110,26 +100,20 @@ func TestExecCmdStop(t *testing.T) {
 		log:     zap.NewNop(),
 	}
 
-	// Create a context with cancel
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd.cancel = cancel
 
-	// Run the command in a goroutine
 	done := make(chan struct{})
 	go func() {
-		// Simulate the Run method
 		execCmd := exec.CommandContext(ctx, cmd.Command[0], cmd.Command[1:]...)
 		execCmd.Start()
 
-		// Wait for the command to complete
 		execCmd.Wait()
 		close(done)
 	}()
 
-	// Stop the command
 	cmd.Stop()
 
-	// Wait for the command to complete or timeout
 	select {
 	case <-done:
 		// Command was stopped as expected
@@ -137,7 +121,6 @@ func TestExecCmdStop(t *testing.T) {
 		t.Fatal("Command was not stopped in time")
 	}
 
-	// Verify the cancel function was called
 	select {
 	case <-ctx.Done():
 		// Context was canceled as expected
@@ -147,7 +130,7 @@ func TestExecCmdStop(t *testing.T) {
 }
 
 // TestGetRedirectFile tests the getRedirectFile function
-func TestGetRedirectFile(t *testing.T) {
+func TestExecGetRedirectFile(t *testing.T) {
 	// Test stdout
 	file, err := getRedirectFile(&outputTarget{Type: "stdout"}, "")
 	if err != nil {
