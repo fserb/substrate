@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 )
@@ -28,7 +29,11 @@ func (s *SubstrateHandler) fileExists(path string) bool {
 	return !info.IsDir()
 }
 
-func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
+func (s *SubstrateHandler) findBestResource(r *http.Request, watcher *Watcher) *string {
+	if watcher.Order == nil {
+		return nil
+	}
+
 	v := caddyhttp.GetVar(r.Context(), "root")
 	root, ok := v.(string)
 	if !ok {
@@ -41,7 +46,7 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 		return &reqPath
 	}
 
-	for _, m := range s.Cmd.Order.matchers {
+	for _, m := range watcher.Order.matchers {
 		if !strings.HasPrefix(reqPath, m.path) {
 			continue
 		}
@@ -52,7 +57,7 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 		}
 	}
 
-	for _, m := range s.Cmd.Order.matchers {
+	for _, m := range watcher.Order.matchers {
 		if !strings.HasPrefix(reqPath, m.path) {
 			continue
 		}
@@ -62,8 +67,8 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 		}
 	}
 
-	if len(s.Cmd.Order.CatchAll) > 0 {
-		for _, ca := range s.Cmd.Order.CatchAll {
+	if len(watcher.Order.CatchAll) > 0 {
+		for _, ca := range watcher.Order.CatchAll {
 			cad := path.Dir(ca)
 			if !strings.HasPrefix(reqPath, cad) {
 				continue
@@ -78,8 +83,12 @@ func (s *SubstrateHandler) findBestResource(r *http.Request) *string {
 	return nil
 }
 
-func (s *SubstrateHandler) matchPath(r *http.Request) bool {
-	for _, p := range s.Cmd.Order.Paths {
+func (s *SubstrateHandler) matchPath(r *http.Request, watcher *Watcher) bool {
+	if watcher.Order == nil {
+		return false
+	}
+
+	for _, p := range watcher.Order.Paths {
 		if p == r.URL.Path {
 			return true
 		}
@@ -89,14 +98,34 @@ func (s *SubstrateHandler) matchPath(r *http.Request) bool {
 }
 
 func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	if s.Cmd == nil || s.Cmd.Order == nil {
-		return next.ServeHTTP(w, r)
+	// Get the root directory from the request context
+	v := caddyhttp.GetVar(r.Context(), "root")
+	root, ok := v.(string)
+	if !ok {
+		root = "."
 	}
 
-	useProxy := s.matchPath(r)
+	// Get or create a watcher for this root if we don't already have one
+	if s.watcher == nil {
+		watcher := GetOrCreateWatcher(root, s.app)
+		if watcher == nil {
+			http.Error(w, "Failed to create substrate", http.StatusInternalServerError)
+			return nil
+		}
+		s.watcher = watcher
+	}
+
+	// Wait for the watcher to be ready or determine it has no substrate
+	// Use a 5 second timeout to avoid hanging indefinitely
+	if !s.watcher.WaitUntilReady(5 * time.Second) {
+		http.Error(w, "Failed to create substrate", http.StatusInternalServerError)
+		return nil
+	}
+
+	useProxy := s.matchPath(r, s.watcher)
 
 	if !useProxy {
-		match := s.findBestResource(r)
+		match := s.findBestResource(r, s.watcher)
 		if match != nil {
 			useProxy = true
 			r.URL.Path = *match
@@ -104,7 +133,7 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 	}
 
 	if useProxy {
-		s.proxy.SetHost(s.Cmd.Order.Host)
+		s.proxy.SetHost(s.watcher.Order.Host)
 		var scheme string
 		if r.TLS == nil {
 			scheme = "http"
@@ -112,8 +141,7 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 			scheme = "https"
 		}
 		r.Header.Set("X-Forwarded-Path", r.RequestURI)
-		r.Header.Set("X-Forwarded-BaseURL",
-			fmt.Sprintf("%s://%s", scheme, r.Host))
+		r.Header.Set("X-Forwarded-BaseURL", fmt.Sprintf("%s://%s", scheme, r.Host))
 		return s.proxy.ServeHTTP(w, r, next)
 	}
 

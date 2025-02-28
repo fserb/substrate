@@ -2,34 +2,15 @@ package substrate
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/user"
-	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
 	"go.uber.org/zap"
 )
-
-type orderMatcher struct {
-	path string
-	ext  string
-}
-
-type Order struct {
-	Host     string   `json:"host,omitempty"`
-	Match    []string `json:"match,omitempty"`
-	Paths    []string `json:"paths,omitempty"`
-	CatchAll []string `json:"catch_all,omitempty"`
-
-	matchers []orderMatcher `json:"-"`
-}
 
 type outputTarget struct {
 	// Type can be null, stdout, stderr, or file.
@@ -46,98 +27,14 @@ type execCmd struct {
 	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
 	RestartPolicy  string            `json:"restart_policy,omitempty"`
 
-	Order *Order `json:"-"`
-
-	key    string
-	cancel context.CancelFunc
-	host   string
-	log    *zap.Logger
+	cancel  context.CancelFunc
+	log     *zap.Logger
+	watcher *Watcher
 }
 
 var (
 	_ caddy.Destructor = (*execCmd)(nil)
 )
-
-func (s *execCmd) Submit(o *Order) {
-	o.matchers = make([]orderMatcher, 0, len(o.Match))
-	for _, m := range o.Match {
-		dir := filepath.Join("/", filepath.Dir(m))
-		name := filepath.Base(m)
-		if name[0] != '*' || name[1] != '.' {
-			continue
-		}
-		ext := name[1:]
-		if dir[len(dir)-1] != '/' {
-			dir += "/"
-		}
-
-		o.matchers = append(o.matchers, orderMatcher{dir, ext})
-	}
-
-	sort.Slice(o.matchers, func(i, j int) bool {
-		if len(o.matchers[i].path) != len(o.matchers[j].path) {
-			return len(o.matchers[i].path) > len(o.matchers[j].path)
-		}
-		if o.matchers[i].path != o.matchers[j].path {
-			return o.matchers[i].path < o.matchers[j].path
-		}
-
-		if len(o.matchers[i].ext) != len(o.matchers[j].ext) {
-			return len(o.matchers[i].ext) > len(o.matchers[j].ext)
-		}
-		return o.matchers[i].ext < o.matchers[j].ext
-	})
-
-	sort.Slice(o.CatchAll, func(i, j int) bool {
-		if len(o.CatchAll[i]) != len(o.CatchAll[j]) {
-			return len(o.CatchAll[i]) > len(o.CatchAll[j])
-		}
-		return o.CatchAll[i] < o.CatchAll[j]
-	})
-
-	s.Order = o
-}
-
-// After you create an execCmd, we check if there's one with the same hash
-// in store. If there is, we replace your cmd with the live one.
-func (s *execCmd) Register(app *App) *execCmd {
-	s.log = app.log.With(zap.String("key", s.Key()))
-	
-	// Apply global configuration
-	if app.Env != nil && (s.Env == nil || len(s.Env) == 0) {
-		s.Env = app.Env
-	}
-	
-	if s.RestartPolicy == "" {
-		s.RestartPolicy = app.RestartPolicy
-	}
-	
-	if s.RedirectStdout == nil {
-		s.RedirectStdout = app.RedirectStdout
-	}
-	
-	if s.RedirectStderr == nil {
-		s.RedirectStderr = app.RedirectStderr
-	}
-	
-	return app.registerCmd(s)
-}
-
-func (s *execCmd) Key() string {
-	if s.key != "" {
-		return s.key
-	}
-
-	out, err := json.Marshal(s)
-	if err != nil {
-		s.log.Error("Failed to marshal substrate", zap.Error(err))
-		return ""
-	}
-
-	hash := sha1.Sum(append(salt, out...))
-	s.key = hex.EncodeToString(hash[:])
-	return s.key
-}
 
 func (s *execCmd) newExecCommand() *exec.Cmd {
 	cmd := exec.Command(s.Command[0], s.Command[1:]...)
@@ -149,7 +46,7 @@ func (s *execCmd) newExecCommand() *exec.Cmd {
 	for key, value := range s.Env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
-	env = append(env, fmt.Sprintf("SUBSTRATE=%s/%s", s.host, s.Key()))
+	env = append(env, fmt.Sprintf("SUBSTRATE=%s/%s", s.watcher.server.Host, s.watcher.key))
 	u, err := user.Lookup(s.User)
 	if err == nil {
 		env = append(env, fmt.Sprintf("HOME=%s", u.HomeDir))

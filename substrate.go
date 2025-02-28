@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"math/big"
+	"sync"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
@@ -18,12 +19,10 @@ import (
 var (
 	salt []byte
 	pool *caddy.UsagePool
-	cmds *caddy.UsagePool
 )
 
 func init() {
 	pool = caddy.NewUsagePool()
-	cmds = caddy.NewUsagePool()
 
 	caddy.RegisterModule(App{})
 	httpcaddyfile.RegisterGlobalOption("substrate", parseGlobalSubstrate)
@@ -44,13 +43,13 @@ var (
 )
 
 type App struct {
-	cmds           map[string]*execCmd
-	server         *Server
-	log            *zap.Logger
 	Env            map[string]string `json:"env,omitempty"`
 	RestartPolicy  string            `json:"restart_policy,omitempty"`
 	RedirectStdout *outputTarget     `json:"redirect_stdout,omitempty"`
 	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
+
+	log   *zap.Logger
+	mutex sync.Mutex
 }
 
 func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) {
@@ -139,50 +138,42 @@ func (h *App) Provision(ctx caddy.Context) error {
 	}
 	h.log.Info("Provisioning substrate")
 
-	h.cmds = make(map[string]*execCmd)
-
+	// Get the server from the pool or create a new one
 	obj, _ := pool.LoadOrStore("server", &Server{})
-	h.server = obj.(*Server)
-	h.server.log = h.log.Named("substrate server")
+	server := obj.(*Server)
+	server.log = h.log.Named("substrate server")
+	server.app = h
 
-	h.server.Start()
+	server.Start()
 
 	return nil
 }
 
-func (h *App) registerCmd(c *execCmd) *execCmd {
-	key := c.Key()
-	if h.cmds[key] != nil {
-		return h.cmds[key]
-	}
-
-	out, _ := cmds.LoadOrStore(key, c)
-	outcmd := out.(*execCmd)
-	h.cmds[key] = outcmd
-	return outcmd
-}
-
 func (h *App) Start() error {
 	h.log.Info("Starting substrate")
-	h.server.WaitForStart(h)
 
-	for _, c := range h.cmds {
-		c.host = h.server.Host
-		go c.Run()
-	}
+	// Get the server and wait for it to start
+	obj, _ := pool.LoadOrStore("server", &Server{})
+	server := obj.(*Server)
+	server.WaitForStart(h)
+
 	return nil
 }
 
 func (h *App) Stop() error {
 	h.log.Info("Stopping substrate")
 
+	// Clean up the server
 	pool.Delete("server")
 
-	for _, c := range h.cmds {
-		cmds.Delete(c.Key())
-	}
-
-	pool.Delete("cmds")
+	// Clean up all watchers in the pool
+	watcherPool.Range(func(key, value any) bool {
+		watcher := value.(*Watcher)
+		if watcher.cmd == nil && watcher.newCmd == nil {
+			watcher.Close()
+		}
+		return true
+	})
 
 	return nil
 }

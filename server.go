@@ -32,15 +32,6 @@ func (s *Server) Start() error {
 		return nil
 	}
 
-	pending_cmds := false
-	cmds.Range(func(key, value any) bool {
-		pending_cmds = true
-		return false
-	})
-	if pending_cmds {
-		return fmt.Errorf("pending commands while starting server")
-	}
-
 	s.readyCh = make(chan struct{})
 
 	addr, err := caddy.ParseNetworkAddressWithDefaults("localhost", "tcp", 0)
@@ -96,6 +87,14 @@ func (s *Server) Stop() {
 
 func (s *Server) Destruct() error {
 	s.Stop()
+
+	// Clean up all watchers
+	watcherPool.Range(func(key, value any) bool {
+		watcher := value.(*Watcher)
+		watcher.Close()
+		return true
+	})
+
 	return nil
 }
 
@@ -144,14 +143,31 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	key := r.URL.Path[1:]
 
-	cmd, ok := s.app.cmds[key]
-	if !ok {
+	// Find the watcher with this key
+	watcher := GetWatcher(key)
+	if watcher == nil {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		s.log.Error("Substrate not found", zap.String("key", key))
 		return
 	}
 
-	s.log.Info("Substrate", zap.String("key", key), zap.Any("cmd", cmd))
+	// Get the command from the watcher
+	watcher.mutex.Lock()
+	var cmd *execCmd
+	if watcher.cmd != nil {
+		cmd = watcher.cmd
+	} else if watcher.newCmd != nil {
+		cmd = watcher.newCmd
+	}
+	watcher.mutex.Unlock()
+
+	if cmd == nil {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		s.log.Error("Substrate not found", zap.String("key", key))
+		return
+	}
+
+	s.log.Info("Substrate", zap.String("key", key))
 
 	var order Order
 	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
@@ -162,6 +178,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	s.log.Info("Received order", zap.String("key", key), zap.Any("order", order))
 
-	cmd.Submit(&order)
+	watcher.Submit(&order)
 }
 

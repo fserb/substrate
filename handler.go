@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
-	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy"
@@ -21,7 +20,7 @@ const (
 
 // Syntax:
 //
-//	substrate {}
+//	substrate
 func init() {
 	caddy.RegisterModule(SubstrateHandler{})
 	httpcaddyfile.RegisterHandlerDirective("substrate", parseSubstrateHandler)
@@ -32,7 +31,6 @@ func init() {
 var (
 	_ caddy.Module                = (*SubstrateHandler)(nil)
 	_ caddy.Provisioner           = (*SubstrateHandler)(nil)
-	_ caddyfile.Unmarshaler       = (*SubstrateHandler)(nil)
 	_ caddyhttp.MiddlewareHandler = (*SubstrateHandler)(nil)
 )
 
@@ -49,14 +47,14 @@ func (s *ReverseProxy) SetHost(host string) {
 	s.Upstreams[0].Dial = host
 }
 
-// Those come from the child process.
+// SubstrateHandler handles requests by proxying to a substrate process
 type SubstrateHandler struct {
-	Cmd   *execCmd `json:"cmd,omitempty"`
-	log   *zap.Logger
-	app   *App
-	fs    fs.FS
-	proxy HostReverseProxy
-	ctx   *caddy.Context
+	log     *zap.Logger
+	app     *App
+	fs      fs.FS
+	proxy   HostReverseProxy
+	ctx     *caddy.Context
+	watcher *Watcher
 }
 
 func (s SubstrateHandler) CaddyModule() caddy.ModuleInfo {
@@ -76,27 +74,11 @@ func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 	}
 	s.fs = fs
 
-	repl, ok := ctx.Context.Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
-	if ok {
-		for i, c := range s.Cmd.Command {
-			s.Cmd.Command[i] = repl.ReplaceAll(c, "")
-		}
-
-		for k, v := range s.Cmd.Env {
-			s.Cmd.Env[k] = repl.ReplaceAll(v, "")
-		}
-
-		s.Cmd.Dir = repl.ReplaceAll(s.Cmd.Dir, "")
-	}
-
 	app, err := ctx.App("substrate")
 	if err != nil {
 		return err
 	}
-
-	if s.Cmd != nil {
-		s.Cmd = s.Cmd.Register(app.(*App))
-	}
+	s.app = app.(*App)
 
 	mod, err := caddy.GetModule("http.handlers.reverse_proxy")
 	if err != nil {
@@ -118,22 +100,8 @@ func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 
 	return nil
 }
-func (s *SubstrateHandler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
-	var h httpcaddyfile.Helper = httpcaddyfile.Helper{Dispenser: d}
-
-	h.Next()
-	s.Cmd = &execCmd{}
-
-	// Skip any blocks - we don't need any configuration
-	for h.NextBlock(0) {
-		// Ignore all directives
-	}
-
-	return nil
-}
 
 func parseSubstrateHandler(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
-	var sm SubstrateHandler
-	return &sm, sm.UnmarshalCaddyfile(h.Dispenser)
+	return &SubstrateHandler{}, nil
 }
 
