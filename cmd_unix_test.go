@@ -115,4 +115,3 @@ func TestCommandOutputSwitchUser(t *testing.T) {
 		t.Errorf("Command ran as %q, want %q", got, targetUser)
 	}
 }
-

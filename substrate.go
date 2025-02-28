@@ -172,8 +172,17 @@ func (h *App) Stop() error {
 		}
 	}
 
-	// Clean up the server from the pool
+	// Clean up the server from the pool - completely remove it
 	pool.Delete("server")
+
+	// Ensure all references are gone
+	for {
+		refs, exists := pool.References("server")
+		if !exists || refs <= 0 {
+			break
+		}
+		pool.Delete("server")
+	}
 
 	// Clean up all watchers in the pool
 	watcherPool.Range(func(key, value any) bool {

@@ -290,4 +290,3 @@ func TestServerSubmitOrder(t *testing.T) {
 		t.Errorf("Expected paths [/api], got %v", watcher.Order.Paths)
 	}
 }
-

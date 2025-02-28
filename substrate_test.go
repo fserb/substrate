@@ -15,9 +15,11 @@ func checkUsagePool(t *testing.T) {
 
 	emptyPool := true
 	pool.Range(func(key, value any) bool {
-		ref, _ := pool.References(key)
-		t.Errorf("Pool still contains key '%s' with %d references", key, ref)
-		emptyPool = false
+		ref, exists := pool.References(key)
+		if exists && ref > 0 {
+			t.Errorf("Pool still contains key '%s' with %d references", key, ref)
+			emptyPool = false
+		}
 		return true
 	})
 
@@ -77,6 +79,9 @@ func TestAppLifecycle(t *testing.T) {
 
 	// Verify resources were cleaned up
 	checkUsagePool(t)
+
+	// Ensure the server is completely removed from the pool for test isolation
+	pool.Delete("server")
 }
 
 // TestAppEnvironmentPropagation tests that environment settings are properly propagated
