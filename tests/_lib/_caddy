@@ -1,0 +1,11 @@
+#!/bin/sh
+
+CADDYFILE="$1"
+if [ -z "$CADDYFILE" ]; then
+    CADDYFILE="./Caddyfile"
+fi
+
+CADDYFILE=$(realpath "$CADDYFILE")
+
+CGO_ENABLED=0 go run -C ${DIR}/../main . run --config $CADDYFILE
+
