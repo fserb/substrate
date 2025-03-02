@@ -12,12 +12,15 @@ import (
 	"go.uber.org/zap"
 )
 
+// outputTarget defines where command output should be directed
 type outputTarget struct {
-	// Type can be null, stdout, stderr, or file.
+	// Type can be "null", "stdout", "stderr", or "file"
 	Type string `json:"type,omitempty"`
+	// File is the path to write output to when Type is "file"
 	File string `json:"file,omitempty"`
 }
 
+// execCmd represents a command to be executed by the substrate system
 type execCmd struct {
 	Command        []string          `json:"command,omitempty"`
 	Env            map[string]string `json:"env,omitempty"`
@@ -25,7 +28,8 @@ type execCmd struct {
 	Dir            string            `json:"dir,omitempty"`
 	RedirectStdout *outputTarget     `json:"redirect_stdout,omitempty"`
 	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
-	RestartPolicy  string            `json:"restart_policy,omitempty"`
+	// how the command is restarted: "always", "never", "on_failure"
+	RestartPolicy string `json:"restart_policy,omitempty"`
 
 	cancel  context.CancelFunc
 	log     *zap.Logger
@@ -194,4 +198,3 @@ func (s *execCmd) Destruct() error {
 	s.Stop()
 	return nil
 }
-

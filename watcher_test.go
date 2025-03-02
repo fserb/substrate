@@ -160,7 +160,6 @@ func TestWatcherClose(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Create a test app
 	app := &App{
 		log: zap.NewNop(),
 	}
@@ -252,4 +251,3 @@ func TestWatcherWatch(t *testing.T) {
 
 	watcher.Close()
 }
-

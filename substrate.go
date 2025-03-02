@@ -43,11 +43,14 @@ var (
 	_ caddy.App         = (*App)(nil)
 )
 
+// App is the main substrate application that manages the substrate server
+// and provides configuration for substrate processes.
 type App struct {
-	Env            map[string]string `json:"env,omitempty"`
-	RestartPolicy  string            `json:"restart_policy,omitempty"`
-	RedirectStdout *outputTarget     `json:"redirect_stdout,omitempty"`
-	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
+	Env map[string]string `json:"env,omitempty"`
+	// How processes are restarted: "always", "never", "on_failure"
+	RestartPolicy  string        `json:"restart_policy,omitempty"`
+	RedirectStdout *outputTarget `json:"redirect_stdout,omitempty"`
+	RedirectStderr *outputTarget `json:"redirect_stderr,omitempty"`
 
 	log    *zap.Logger
 	mutex  sync.Mutex
@@ -194,4 +197,3 @@ func (h *App) GetWatcher(root string) *Watcher {
 	h.server.watchers[key] = watcher
 	return watcher
 }
-

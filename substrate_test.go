@@ -107,4 +107,3 @@ func TestAppEnvironmentPropagation(t *testing.T) {
 		t.Errorf("Restart policy not properly set, got %s", cmd.RestartPolicy)
 	}
 }
-

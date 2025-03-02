@@ -237,4 +237,3 @@ func TestExecCmdSubmit(t *testing.T) {
 		t.Errorf("Expected matchers: %+v, got: %+v", expectedMatchers, order.matchers)
 	}
 }
-

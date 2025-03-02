@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"path"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -17,37 +18,62 @@ import (
 
 // orderMatcher helps match file extensions to paths
 type orderMatcher struct {
-	path string
-	ext  string
+	path string // Directory path to match
+	ext  string // File extension to match (including the dot)
 }
 
 // Order represents a command from a substrate process
 type Order struct {
-	Host     string   `json:"host,omitempty"`
-	Match    []string `json:"match,omitempty"`
-	Paths    []string `json:"paths,omitempty"`
+	// Host is the upstream server to proxy requests to
+	Host string `json:"host,omitempty"`
+
+	// Match contains patterns for matching files by extension
+	// Format: "/path/*.ext" where path is a directory and ext is a file extension
+	Match []string `json:"match,omitempty"`
+
+	// Paths contains exact paths that should be proxied to the upstream
+	Paths []string `json:"paths,omitempty"`
+
+	// CatchAll contains fallback paths to use when no other match is found for a path
 	CatchAll []string `json:"catch_all,omitempty"`
 
+	// matchers contains compiled matchers from the Match patterns
 	matchers []orderMatcher `json:"-"`
 }
 
-// Watcher watches for a substrate file in a root directory
+// Watcher watches for a substrate file in a root directory and manages
+// the lifecycle of substrate processes.
 type Watcher struct {
-	Root  string
-	Order *Order // Current active order
+	// Root is the directory to watch for a substrate file
+	Root string
 
-	cmd       *execCmd // Current command answering queries
-	newCmd    *execCmd // New command being loaded
-	watcher   *fsnotify.Watcher
-	log       *zap.Logger
-	cancel    context.CancelFunc
-	mutex     sync.Mutex
-	app       *App
-	substFile string
-	suburl    string
+	// Order is the current active order from the substrate process
+	Order *Order
+
+	cmd     *execCmd           // Current command answering queries
+	newCmd  *execCmd           // New command being loaded
+	watcher *fsnotify.Watcher  // File system watcher
+	log     *zap.Logger        // Logger
+	cancel  context.CancelFunc // Function to cancel the watch goroutine
+	mutex   sync.Mutex         // Protects access to cmd, newCmd, and Order
+	app     *App               // Reference to the parent App
+	suburl  string             // URL for the substrate process to communicate with
 }
 
 func (w *Watcher) init() error {
+	if w.Root == "" {
+		return fmt.Errorf("root directory not specified")
+	}
+
+	if !path.IsAbs(w.Root) {
+		return fmt.Errorf("root directory must be an absolute path")
+	}
+
+	// Verify the root directory exists
+	if _, err := os.Stat(w.Root); os.IsNotExist(err) {
+		return fmt.Errorf("root directory does not exist: %w", err)
+	}
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("failed to create file watcher: %w", err)
@@ -61,10 +87,13 @@ func (w *Watcher) init() error {
 	}
 
 	// Check if substrate file already exists
-	w.substFile = filepath.Join(w.Root, "substrate")
-	if _, err := os.Stat(w.substFile); err == nil {
+	substFile := filepath.Join(w.Root, "substrate")
+	if _, err := os.Stat(substFile); err == nil {
 		w.startLoading()
 	} else {
+		if !os.IsNotExist(err) {
+			w.log.Warn("Error checking substrate file", zap.Error(err))
+		}
 		w.mutex.Lock()
 		defer w.mutex.Unlock()
 		if w.cmd != nil {
@@ -90,18 +119,25 @@ func (w *Watcher) init() error {
 // watch monitors the substrate file for changes
 func (w *Watcher) watch(ctx context.Context) {
 	// Guard against nil watcher at the beginning
-	if w.watcher == nil {
+
+	watcher := w.watcher
+
+	if watcher == nil {
 		return
 	}
 
+	w.log.Debug("Starting file watcher")
+	defer w.log.Debug("File watcher stopped")
+
 	for {
 		select {
-		case event, ok := <-w.watcher.Events:
+		case event, ok := <-watcher.Events:
 			if !ok {
+				w.log.Debug("Watcher events channel closed")
 				return
 			}
 
-			// Guard against nil watcher
+			// Guard against nil watcher with mutex protection
 			if w.watcher == nil {
 				return
 			}
@@ -132,8 +168,9 @@ func (w *Watcher) watch(ctx context.Context) {
 				w.log.Info("Substrate file removed")
 			}
 
-		case err, ok := <-w.watcher.Errors:
+		case err, ok := <-watcher.Errors:
 			if !ok {
+				w.log.Debug("Watcher errors channel closed")
 				return
 			}
 			// Guard against nil logger
@@ -141,7 +178,12 @@ func (w *Watcher) watch(ctx context.Context) {
 				w.log.Error("Watcher error", zap.Error(err))
 			}
 
+			if w.watcher == nil {
+				return
+			}
+
 		case <-ctx.Done():
+			w.log.Debug("Watcher context cancelled")
 			return
 		}
 	}
@@ -202,7 +244,7 @@ func (w *Watcher) startLoading() {
 }
 
 // Close stops watching and cleans up resources
-func (w *Watcher) Close() error {
+func (w *Watcher) Close() {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
 
@@ -225,8 +267,6 @@ func (w *Watcher) Close() error {
 		w.newCmd.Stop()
 		w.newCmd = nil
 	}
-
-	return nil
 }
 
 // IsReady returns true if the watcher has a command with an order
@@ -333,4 +373,3 @@ func (w *Watcher) Submit(o *Order) {
 		oldCmd.Stop()
 	}
 }
-

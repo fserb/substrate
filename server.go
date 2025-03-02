@@ -42,7 +42,10 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to parse network address: %w", err)
 	}
 
-	ln, err := addr.Listen(context.Background(), 0, net.ListenConfig{})
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	ln, err := addr.Listen(ctx, 0, net.ListenConfig{})
 	if err != nil {
 		return fmt.Errorf("failed to listen on address: %w", err)
 	}
@@ -51,7 +54,12 @@ func (s *Server) Start() error {
 		return fmt.Errorf("unexpected listener type: %T", ln)
 	}
 
-	s.Server = http.Server{Handler: s}
+	s.Server = http.Server{
+		Handler:      s,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
 
 	go func() {
 		if err := s.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -60,7 +68,13 @@ func (s *Server) Start() error {
 		s.log.Info("Server stopped")
 	}()
 
-	port := listener.Addr().(*net.TCPAddr).Port
+	tcpAddr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		s.Stop()
+		return fmt.Errorf("unexpected address type: %T", listener.Addr())
+	}
+
+	port := tcpAddr.Port
 	s.Host = fmt.Sprintf("http://localhost:%d", port)
 
 	s.log.Info("Substrate server running", zap.String("host", s.Host))
@@ -76,20 +90,27 @@ func (s *Server) WaitForStart(app *App) {
 }
 
 func (s *Server) Stop() {
+	s.log.Info("Stopping substrate server")
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
 	err := s.Shutdown(ctx)
 	if err != nil {
-		s.log.Named("substrate").Error("Error shutting down old server", zap.Error(err))
+		s.log.Error("Error shutting down server", zap.Error(err))
 	}
-	s.log.Named("substrate").Info("Stopped previous server")
-	s.readyCh = nil
-	s.Host = ""
-	s.app = nil
+
 	for _, watcher := range s.watchers {
 		watcher.Close()
 	}
 	s.watchers = nil
+
+	// Reset server state
+	s.readyCh = nil
+	s.Host = ""
+	s.app = nil
+
+	s.log.Info("Substrate server stopped")
 }
 
 func (s *Server) Destruct() error {
@@ -194,4 +215,3 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	watcher.Submit(&order)
 }
-

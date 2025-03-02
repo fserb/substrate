@@ -274,4 +274,3 @@ func TestMWMatchPath(t *testing.T) {
 func strPtr(s string) *string {
 	return &s
 }
-

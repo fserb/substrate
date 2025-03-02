@@ -157,4 +157,3 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 
 	return next.ServeHTTP(w, r)
 }
-
