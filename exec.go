@@ -88,58 +88,82 @@ func (s *execCmd) newExecCommand() *exec.Cmd {
 	return cmd
 }
 
+// Run executes the command with proper restart policy handling
+// It manages the lifecycle of the process according to the configured restart policy
 func (s *execCmd) Run() {
 	if s.cancel != nil {
 		return
 	}
+	logger := s.log
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
 	if s.Command == nil || len(s.Command) == 0 {
+		logger.Error("Cannot run empty command")
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	s.cancel = cancel
+	outerctx, ocancel := context.WithCancel(context.Background())
+	s.cancel = ocancel
 	delay := minRestartDelay
 	var cmd *exec.Cmd
 
 cmdLoop:
 	for {
 		cmd = s.newExecCommand()
-		if s.log != nil {
-			s.log.Info("Starting command", zap.String("command", s.Command[0]))
-		}
+		cmdLogger := logger.With(
+			zap.String("command", s.Command[0]),
+			zap.Strings("args", s.Command[1:]),
+			zap.String("dir", s.Dir),
+		)
+
+		cmdLogger.Info("Starting command")
 		start := time.Now()
 
 		if err := cmd.Start(); err != nil {
-			s.log.Error("Failed to start command", zap.Error(err))
+			cmdLogger.Error("Failed to start command", zap.Error(err))
 			break cmdLoop
 		}
 
 		errCh := make(chan error, 1)
 		go func() { errCh <- cmd.Wait() }()
 
+		cancelctx, cancel := context.WithCancel(outerctx)
+
+		// Wait for command completion or cancellation
 		select {
 		case err := <-errCh:
+			cancel()
 			duration := time.Since(start)
 			if err != nil {
-				s.log.Error("Command exited with error", zap.Error(err))
+				cmdLogger.Error("Command exited with error", zap.Error(err))
 			}
+
 			if s.RestartPolicy == "never" || (s.RestartPolicy == "on_failure" && err == nil) {
 				break cmdLoop
 			}
+
 			if err == nil || duration > resetRestartDelay {
 				delay = minRestartDelay
 			}
-			s.log.Info("Restarting in", zap.Duration("delay", delay))
+
+			cmdLogger.Info("Restarting command", zap.Duration("delay", delay))
+
 			select {
 			case <-time.After(delay):
-			case <-ctx.Done():
+			case <-cancelctx.Done():
 				break cmdLoop
 			}
+
 			delay *= 2
 			if delay > maxRestartDelay {
 				delay = maxRestartDelay
 			}
-		case <-ctx.Done():
+
+		case <-cancelctx.Done():
+			cmdLogger.Info("Command cancelled")
+			cancel()
 			break cmdLoop
 		}
 	}
@@ -151,20 +175,25 @@ cmdLoop:
 		return
 	}
 
+	logger.Info("Sending interrupt signal to process")
+
 	if err := cmd.Process.Signal(os.Interrupt); err != nil {
-		s.log.Error("Interrupt failed, killing process", zap.Error(err))
+		logger.Error("Interrupt failed, killing process", zap.Error(err))
 		cmd.Process.Kill()
 		return
 	}
+
 	done := make(chan struct{})
 	go func() {
 		cmd.Wait()
 		close(done)
 	}()
+
 	select {
 	case <-done:
+		logger.Info("Process exited gracefully")
 	case <-time.After(5 * time.Second):
-		s.log.Error("Process did not exit in time, killing")
+		logger.Error("Process did not exit in time, killing")
 		cmd.Process.Kill()
 	}
 }

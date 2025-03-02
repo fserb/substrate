@@ -277,7 +277,7 @@ func (w *Watcher) IsReady() bool {
 }
 
 // WaitUntilReady waits for the watcher to be ready or determines it has no substrate
-// Returns true if the watcher is ready, false if there's no substrate
+// Returns true if the watcher is ready, false if there's no substrate or timeout occurs
 func (w *Watcher) WaitUntilReady(timeout time.Duration) bool {
 	// Use mutex to safely check if ready
 	w.mutex.Lock()
@@ -292,7 +292,6 @@ func (w *Watcher) WaitUntilReady(timeout time.Duration) bool {
 		return false
 	}
 
-	// Wait for the watcher to be ready with timeout
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		w.mutex.Lock()
@@ -304,7 +303,6 @@ func (w *Watcher) WaitUntilReady(timeout time.Duration) bool {
 		}
 		time.Sleep(50 * time.Millisecond) // Short sleep to avoid busy waiting
 	}
-
 	return false
 }
 
@@ -317,49 +315,35 @@ func (w *Watcher) GetCmd() *execCmd {
 
 // Submit processes an order from a substrate process
 func (w *Watcher) Submit(o *Order) {
+	if o == nil {
+		w.log.Error("Received nil order")
+		return
+	}
+
+	w.log.Info("Processing new order",
+		zap.String("host", o.Host),
+		zap.Int("match_patterns", len(o.Match)),
+		zap.Int("paths", len(o.Paths)),
+		zap.Int("catch_all", len(o.CatchAll)))
+
+	// Process matchers outside the lock to minimize lock time
+	o.matchers = w.processMatchers(o.Match)
+
+	// Sort catch-all patterns by length (longest first) then alphabetically
+	if len(o.CatchAll) > 0 {
+		sort.Slice(o.CatchAll, func(i, j int) bool {
+			if len(o.CatchAll[i]) != len(o.CatchAll[j]) {
+				return len(o.CatchAll[i]) > len(o.CatchAll[j])
+			}
+			return o.CatchAll[i] < o.CatchAll[j]
+		})
+	}
+
+	// Now acquire the lock to update the watcher state
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
 
-	o.matchers = make([]orderMatcher, 0, len(o.Match))
-	for _, m := range o.Match {
-		dir := filepath.Join("/", filepath.Dir(m))
-		name := filepath.Base(m)
-		if name[0] != '*' || name[1] != '.' {
-			continue
-		}
-		ext := name[1:]
-		if dir[len(dir)-1] != '/' {
-			dir += "/"
-		}
-
-		o.matchers = append(o.matchers, orderMatcher{dir, ext})
-	}
-
-	sort.Slice(o.matchers, func(i, j int) bool {
-		if len(o.matchers[i].path) != len(o.matchers[j].path) {
-			return len(o.matchers[i].path) > len(o.matchers[j].path)
-		}
-		if o.matchers[i].path != o.matchers[j].path {
-			return o.matchers[i].path < o.matchers[j].path
-		}
-
-		if len(o.matchers[i].ext) != len(o.matchers[j].ext) {
-			return len(o.matchers[i].ext) > len(o.matchers[j].ext)
-		}
-		return o.matchers[i].ext < o.matchers[j].ext
-	})
-
-	sort.Slice(o.CatchAll, func(i, j int) bool {
-		if len(o.CatchAll[i]) != len(o.CatchAll[j]) {
-			return len(o.CatchAll[i]) > len(o.CatchAll[j])
-		}
-		return o.CatchAll[i] < o.CatchAll[j]
-	})
-
-	w.log.Info("New substrate ready")
 	w.Order = o
-	// Always promote the newCmd to cmd when receiving an order
-	// This ensures the watcher is ready as soon as the server receives an order
 
 	if w.newCmd == nil {
 		return
@@ -368,8 +352,60 @@ func (w *Watcher) Submit(o *Order) {
 	oldCmd := w.cmd
 	w.cmd = w.newCmd
 	w.newCmd = nil
+
+	w.log.Info("New substrate ready and promoted")
+
 	if oldCmd != nil {
 		w.log.Info("Stopping old substrate process")
-		oldCmd.Stop()
+		go oldCmd.Stop()
 	}
 }
+
+// processMatchers processes match patterns and returns sorted matchers
+func (w *Watcher) processMatchers(patterns []string) []orderMatcher {
+	if len(patterns) == 0 {
+		return nil
+	}
+
+	matchers := make([]orderMatcher, 0, len(patterns))
+
+	for _, m := range patterns {
+		dir := filepath.Join("/", filepath.Dir(m))
+		name := filepath.Base(m)
+
+		// Skip invalid patterns
+		if len(name) < 2 || name[0] != '*' || name[1] != '.' {
+			w.log.Warn("Skipping invalid match pattern", zap.String("pattern", m))
+			continue
+		}
+
+		ext := name[1:]
+		if dir[len(dir)-1] != '/' {
+			dir += "/"
+		}
+
+		matchers = append(matchers, orderMatcher{dir, ext})
+	}
+
+	// Sort matchers by:
+	// 1. Path length (longest first for most specific match)
+	// 2. Path name (alphabetically)
+	// 3. Extension length (longest first)
+	// 4. Extension name (alphabetically)
+	sort.Slice(matchers, func(i, j int) bool {
+		if len(matchers[i].path) != len(matchers[j].path) {
+			return len(matchers[i].path) > len(matchers[j].path)
+		}
+		if matchers[i].path != matchers[j].path {
+			return matchers[i].path < matchers[j].path
+		}
+
+		if len(matchers[i].ext) != len(matchers[j].ext) {
+			return len(matchers[i].ext) > len(matchers[j].ext)
+		}
+		return matchers[i].ext < matchers[j].ext
+	})
+
+	return matchers
+}
+

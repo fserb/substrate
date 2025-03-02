@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+	"go.uber.org/zap"
 )
 
 func (s *SubstrateHandler) fileExists(path string) bool {
@@ -117,33 +118,46 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 
 	// Get or create a watcher for this root if we don't already have one
 	if s.watcher == nil {
+		s.log.Debug("Creating watcher for root directory", zap.String("root", root))
 		watcher := s.app.GetWatcher(root)
 		if watcher == nil {
+			s.log.Error("Failed to create substrate watcher")
 			http.Error(w, "Failed to create substrate", http.StatusInternalServerError)
 			return nil
 		}
 		s.watcher = watcher
 	}
 
-	// Wait for the watcher to be ready or determine it has no substrate
-	// Use a 5 second timeout to avoid hanging indefinitely
 	if !s.watcher.WaitUntilReady(5 * time.Second) {
 		http.Error(w, "Failed to create substrate", http.StatusInternalServerError)
 		return nil
 	}
 
-	useProxy := s.matchPath(r, s.watcher)
+	if s.watcher.Order == nil {
+		s.log.Error("Invalid order configuration")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return nil
+	}
 
+	useProxy := s.matchPath(r, s.watcher)
 	if !useProxy {
 		match := s.findBestResource(r, s.watcher)
 		if match != nil {
 			useProxy = true
+			s.log.Debug("Found matching resource", zap.String("resource", *match))
 			r.URL.Path = *match
 		}
 	}
 
+	if useProxy && s.watcher.Order.Host == "" {
+		useProxy = false
+	}
+
 	if useProxy {
+		s.log.Debug("Proxying request", zap.String("upstream", s.watcher.Order.Host))
 		s.proxy.SetHost(s.watcher.Order.Host)
+
+		// Add forwarding headers
 		var scheme string
 		if r.TLS == nil {
 			scheme = "http"
@@ -152,6 +166,7 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 		}
 		r.Header.Set("X-Forwarded-Path", r.RequestURI)
 		r.Header.Set("X-Forwarded-BaseURL", fmt.Sprintf("%s://%s", scheme, r.Host))
+
 		return s.proxy.ServeHTTP(w, r, next)
 	}
 

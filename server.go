@@ -34,7 +34,6 @@ func (s *Server) Start() error {
 	}
 
 	s.readyCh = make(chan struct{})
-
 	s.watchers = make(map[string]*Watcher)
 
 	addr, err := caddy.ParseNetworkAddressWithDefaults("localhost", "tcp", 0)
@@ -49,6 +48,7 @@ func (s *Server) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to listen on address: %w", err)
 	}
+
 	listener, ok := ln.(net.Listener)
 	if !ok {
 		return fmt.Errorf("unexpected listener type: %T", ln)
@@ -59,6 +59,7 @@ func (s *Server) Start() error {
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
+		ErrorLog:     zap.NewStdLog(s.log),
 	}
 
 	go func() {
@@ -68,6 +69,7 @@ func (s *Server) Start() error {
 		s.log.Info("Server stopped")
 	}()
 
+	// Get the actual port we're listening on
 	tcpAddr, ok := listener.Addr().(*net.TCPAddr)
 	if !ok {
 		s.Stop()
@@ -77,8 +79,12 @@ func (s *Server) Start() error {
 	port := tcpAddr.Port
 	s.Host = fmt.Sprintf("http://localhost:%d", port)
 
-	s.log.Info("Substrate server running", zap.String("host", s.Host))
+	s.log.Info("Substrate server running",
+		zap.String("host", s.Host),
+		zap.Int("port", port),
+	)
 
+	// Signal that the server is ready
 	close(s.readyCh)
 
 	return nil
@@ -146,35 +152,45 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == "GET" && r.URL.Path == "/reset" {
+		s.log.Info("Cache reset requested")
 		err := clearCache()
 		if err != nil {
+			s.log.Error("Error clearing cache", zap.Error(err))
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			if s.log != nil {
-				s.log.Error("Error clearing cache", zap.Error(err))
-			}
 			return
 		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Cache cleared"))
 		return
 	}
 
+	if r.Method == "GET" && r.URL.Path == "/status" {
+		info := GetDebugInfo(s)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(info)
+	}
+
 	if r.Method != "POST" {
+		s.log.Warn("Invalid method", zap.String("method", r.Method))
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if r.Header.Get("Content-Type") != "application/json" {
+
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		s.log.Warn("Invalid content type", zap.String("content_type", contentType))
 		http.Error(w, "Unsupported Media Type", http.StatusUnsupportedMediaType)
 		return
 	}
 
 	key := r.URL.Path[1:]
+	logger := s.log.With(zap.String("key", key))
 
-	// Find the watcher with this key
 	watcher := s.watchers[key]
 	if watcher == nil {
+		logger.Error("Substrate not found")
 		http.Error(w, "Not Found", http.StatusNotFound)
-		if s.log != nil {
-			s.log.Error("Substrate not found", zap.String("key", key))
-		}
 		return
 	}
 
@@ -189,29 +205,23 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	watcher.mutex.Unlock()
 
 	if cmd == nil {
+		logger.Error("Substrate command not found")
 		http.Error(w, "Not Found", http.StatusNotFound)
-		if s.log != nil {
-			s.log.Error("Substrate not found", zap.String("key", key))
-		}
 		return
 	}
 
-	if s.log != nil {
-		s.log.Info("Substrate", zap.String("key", key))
-	}
+	logger.Info("Processing substrate request")
 
 	var order Order
 	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
+		logger.Error("Error unmarshalling order", zap.Error(err))
 		http.Error(w, "Bad Request", http.StatusBadRequest)
-		if s.log != nil {
-			s.log.Error("Error unmarshalling order", zap.Error(err))
-		}
 		return
 	}
 
-	if s.log != nil {
-		s.log.Info("Received order", zap.String("key", key), zap.Any("order", order))
-	}
-
+	logger.Info("Received order", zap.Any("order", order))
 	watcher.Submit(&order)
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Order submitted successfully"))
 }
