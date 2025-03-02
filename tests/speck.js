@@ -10,18 +10,34 @@ let tmpDir = "";
 let activeTests = 0;
 let cleanup = null;
 
-async function run(cmd, sync = false) {
+const pgRegistry = new Set();
+
+async function run(cmd) {
+  const pgidFile = await Deno.makeTempFile({ prefix: "speck_pgid" });
   const proc = new Deno.Command("bash", {
-    args: ["-c", cmd],
+    args: ["-c", `set -m; echo $$ > ${pgidFile}; exec ${cmd};`],
     env: {
       PATH: `${basePath}/_lib:${Deno.env.get("PATH")}`,
       DIR: basePath,
+      TESTDIR: tmpDir,
+      VERBOSE: verbose ? "1" : "0",
     },
     stderr: "inherit",
+    stdout: "piped",
   });
 
-  const { code, stdout } = sync ? proc.outputSync() : await proc.output();
-  const output = new TextDecoder().decode(stdout).trim();
+  const process = proc.spawn();
+  const code = (await process.status).code;
+  const reader = process.stdout.getReader();
+  let outputBytes = new Uint8Array(0);
+  try {
+    const { value } = await reader.read();
+    if (value) outputBytes = value;
+  } finally {
+    reader.releaseLock();
+  }
+  await process.stdout.cancel();
+  const output = new TextDecoder().decode(outputBytes).trim();
   return code === 0 ? output : `status: ${code}\n${output}`;
 }
 
@@ -36,7 +52,7 @@ async function setupTmpDir() {
   return () => {
     if (hasShutdown) return;
     Deno.chdir(currentDir);
-    run(`rm -rf ${tmpDir}`, true);
+    Deno.removeSync(tmpDir, { recursive: true });
     hasShutdown = true;
   };
 }
@@ -120,10 +136,12 @@ function setupTestsFromFile(file, range = []) {
           const output = await run(cmd);
           if (verbose) console.log(output);
 
-          if (expected !== "*" && output !== expected) {
+          let valid = output === expected;
+          if (expected === "*" && !output.startsWith("status:")) valid = true;
+          if (!valid) {
             const diff = await generateDiff(output, expected);
             throw new Error([
-              `${red("✗")} Command ${bold(i)} at line ${line} failed:`,
+              `${red("✗")} Command ${bold("" + i)} at line ${line} failed:`,
               `  $ ${cyan(cmd)}`,
               `  ${yellow("Diff:")}`,
               diff.split("\n").map((line) => `  ${line}`).join("\n"),

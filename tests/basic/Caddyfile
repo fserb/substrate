@@ -1,0 +1,14 @@
+{
+  admin :8721
+  substrate
+  log {
+    output discard
+  }
+}
+
+:8722 {
+  root {$CWD}
+  substrate
+  file_server browse
+}
+

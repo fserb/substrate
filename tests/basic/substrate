@@ -1,0 +1,25 @@
+#!/usr/bin/env -S deno run -A
+
+const PORT = 8723;
+const SUB = Deno.env.get("SUBSTRATE") ?? "";
+await fetch(SUB, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    host: `:${PORT}`,
+    match: [".md"],
+    paths: ["/up"],
+    catch_all: ["/all.md"],
+  }),
+});
+
+Deno.serve({ port: PORT }, (req) => {
+  return new Response(`SUBSTRATE
+sub: ${SUB}
+Request path: ${req.url}
+X-Forwarded-Path: ${req.headers.get("x-forwarded-path")}
+`);
+});
+
