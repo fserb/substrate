@@ -10,7 +10,7 @@ let tmpDir = "";
 let activeTests = 0;
 let cleanup = null;
 
-const pgRegistry = new Set();
+const pgidRegistry = new Set();
 
 async function run(cmd) {
   const pgidFile = await Deno.makeTempFile({ prefix: "speck_pgid" });
@@ -27,7 +27,14 @@ async function run(cmd) {
   });
 
   const process = proc.spawn();
+
   const code = (await process.status).code;
+
+  const pgidText = await Deno.readTextFile(pgidFile);
+  const pgid = parseInt(pgidText);
+  if (pgid) pgidRegistry.add(pgid);
+  await Deno.remove(pgidFile);
+
   const reader = process.stdout.getReader();
   let outputBytes = new Uint8Array(0);
   try {
@@ -41,6 +48,17 @@ async function run(cmd) {
   return code === 0 ? output : `status: ${code}\n${output}`;
 }
 
+function cleanupProcesses() {
+  for (const pgid of pgidRegistry) {
+    try {
+      Deno.kill(pgid, { signal: "SIGKILL" });
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  pgidRegistry.clear();
+}
+
 async function setupTmpDir() {
   const currentDir = Deno.cwd();
   tmpDir = await Deno.makeTempDir({ prefix: "test-" });
@@ -52,6 +70,7 @@ async function setupTmpDir() {
   return () => {
     if (hasShutdown) return;
     Deno.chdir(currentDir);
+    cleanupProcesses();
     Deno.removeSync(tmpDir, { recursive: true });
     hasShutdown = true;
   };
