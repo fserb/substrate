@@ -174,6 +174,83 @@ func TestServerServeHTTP(t *testing.T) {
 			t.Errorf("Expected status %d, got %d", http.StatusNotFound, rr.Code)
 		}
 	})
+
+	t.Run("StatusEndpoint", func(t *testing.T) {
+		server := &Server{
+			log:      zap.NewNop(),
+			app:      &App{},
+			watchers: make(map[string]*Watcher),
+		}
+
+		req := httptest.NewRequest("GET", "/status", nil)
+		rr := httptest.NewRecorder()
+
+		server.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status %d, got %d", http.StatusOK, rr.Code)
+		}
+
+		if rr.Header().Get("Content-Type") != "application/json" {
+			t.Errorf("Expected Content-Type %s, got %s", "application/json", rr.Header().Get("Content-Type"))
+		}
+
+		var info DebugInfo
+		err := json.Unmarshal(rr.Body.Bytes(), &info)
+		if err != nil {
+			t.Errorf("Failed to unmarshal response: %v", err)
+		}
+
+		if info.GoVersion == "" {
+			t.Error("GoVersion is empty")
+		}
+	})
+
+	t.Run("ResetEndpoint", func(t *testing.T) {
+		server := &Server{
+			log: zap.NewNop(),
+			app: &App{},
+		}
+
+		req := httptest.NewRequest("GET", "/reset", nil)
+		rr := httptest.NewRecorder()
+
+		server.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status %d, got %d", http.StatusOK, rr.Code)
+		}
+
+		if string(rr.Body.Bytes()) != "Cache cleared" {
+			t.Errorf("Expected body %q, got %q", "Cache cleared", string(rr.Body.Bytes()))
+		}
+	})
+
+	t.Run("InvalidJSON", func(t *testing.T) {
+		server := &Server{
+			log:      zap.NewNop(),
+			app:      &App{},
+			watchers: make(map[string]*Watcher),
+		}
+
+		// Add a test watcher
+		watcher := &Watcher{
+			Root: "/tmp",
+			cmd:  &execCmd{},
+			log:  zap.NewNop(),
+		}
+		server.watchers["test"] = watcher
+
+		req := httptest.NewRequest("POST", "/test", strings.NewReader("invalid json"))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		server.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("Expected status %d, got %d", http.StatusBadRequest, rr.Code)
+		}
+	})
 }
 
 func TestServerSubmitOrder(t *testing.T) {

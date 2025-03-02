@@ -8,8 +8,6 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/caddyserver/caddy/v2"
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"go.uber.org/zap"
 )
 
@@ -24,24 +22,6 @@ func (d *mockHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
 		d.check(r)
 	}
 	return nil
-}
-
-type mockReverseProxy struct {
-	host   string
-	called bool
-}
-
-func (d *mockReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	d.called = true
-	return nil
-}
-
-func (d *mockReverseProxy) Provision(ctx caddy.Context) error {
-	return nil
-}
-
-func (d *mockReverseProxy) SetHost(host string) {
-	d.host = host
 }
 
 func TestMWServeHTTP(t *testing.T) {
@@ -247,6 +227,9 @@ func TestMWMatchPath(t *testing.T) {
 		{"/api", false},
 		{"/api/v2", false},
 		{"/api/v1/users", false},
+		{"/static/", false},           // Trailing slash
+		{"/static/css", false},        // Subdirectory
+		{"/api/v1?param=value", true}, // With query parameters
 	}
 
 	for _, tc := range tests {
@@ -268,6 +251,17 @@ func TestMWMatchPath(t *testing.T) {
 
 	if sh.matchPath(req, &Watcher{Order: nil}) {
 		t.Error("matchPath with nil order should return false")
+	}
+
+	// Test with empty paths
+	emptyOrder := &Order{
+		Paths: []string{},
+	}
+	emptyWatcher := &Watcher{
+		Order: emptyOrder,
+	}
+	if sh.matchPath(req, emptyWatcher) {
+		t.Error("matchPath with empty paths should return false")
 	}
 }
 

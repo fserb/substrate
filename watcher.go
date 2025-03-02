@@ -408,4 +408,3 @@ func (w *Watcher) processMatchers(patterns []string) []orderMatcher {
 
 	return matchers
 }
-

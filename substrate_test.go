@@ -106,4 +106,65 @@ func TestAppEnvironmentPropagation(t *testing.T) {
 	if cmd.RestartPolicy != "always" {
 		t.Errorf("Restart policy not properly set, got %s", cmd.RestartPolicy)
 	}
+
+	// Test with different output targets
+	if cmd.RedirectStdout == nil {
+		cmd.RedirectStdout = app.RedirectStdout
+	}
+
+	if cmd.RedirectStdout.Type != "null" {
+		t.Errorf("RedirectStdout not properly set, got %s", cmd.RedirectStdout.Type)
+	}
+
+	if cmd.RedirectStderr == nil {
+		cmd.RedirectStderr = app.RedirectStderr
+	}
+
+	if cmd.RedirectStderr.Type != "null" {
+		t.Errorf("RedirectStderr not properly set, got %s", cmd.RedirectStderr.Type)
+	}
+}
+
+// TestAppGetWatcherWithInvalidRoot tests the GetWatcher method with invalid root
+func TestAppGetWatcherWithInvalidRoot(t *testing.T) {
+	app := &App{
+		log: zap.NewNop(),
+	}
+
+	// Start the app to initialize the server
+	err := app.Start()
+	if err != nil {
+		t.Fatalf("Failed to start app: %v", err)
+	}
+	defer app.Stop()
+
+	// Test with non-existent directory
+	watcher := app.GetWatcher("/nonexistent/directory")
+	if watcher != nil {
+		t.Error("GetWatcher should return nil for non-existent directory")
+	}
+
+	// Test with relative path (should fail because root must be absolute)
+	watcher = app.GetWatcher("relative/path")
+	if watcher != nil {
+		t.Error("GetWatcher should return nil for relative path")
+	}
+}
+
+// TestAppCaddyModule tests the CaddyModule method
+func TestAppCaddyModule(t *testing.T) {
+	app := App{}
+
+	info := app.CaddyModule()
+
+	if info.ID != "substrate" {
+		t.Errorf("Expected module ID 'substrate', got '%s'", info.ID)
+	}
+
+	// Test that the New function returns a new App
+	module := info.New()
+	_, ok := module.(*App)
+	if !ok {
+		t.Errorf("Expected New() to return *App, got %T", module)
+	}
 }
