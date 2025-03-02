@@ -16,10 +16,10 @@ fi
 CADDYFILE=$(realpath "$CADDYFILE")
 export CWD=`pwd`
 
-CGO_ENABLED=0 go run -C ${DIR}/../main . stop --config $CADDYFILE 2>/dev/null || true
 
 if [ "$ACTION" == "stop" ]; then
-  exit 0
+ CGO_ENABLED=0 go run -C ${DIR}/../main . stop --config $CADDYFILE 2>/dev/null || true
+ exit 0
 fi
 
 CGO_ENABLED=0 go run -C ${DIR}/../main . start --config $CADDYFILE 2>/dev/null &

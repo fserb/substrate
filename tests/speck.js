@@ -51,10 +51,8 @@ async function run(cmd) {
 function cleanupProcesses() {
   for (const pgid of pgidRegistry) {
     try {
-      Deno.kill(pgid, { signal: "SIGKILL" });
-    } catch (e) {
-      console.error(e);
-    }
+      Deno.kill(pgid, "SIGKILL");
+    } catch (_) { /* ignore */ }
   }
   pgidRegistry.clear();
 }
