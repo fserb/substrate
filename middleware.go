@@ -117,7 +117,7 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 
 	// Get or create a watcher for this root if we don't already have one
 	if s.watcher == nil {
-		watcher := GetOrCreateWatcher(root, s.app)
+		watcher := s.app.GetWatcher(root)
 		if watcher == nil {
 			http.Error(w, "Failed to create substrate", http.StatusInternalServerError)
 			return nil
@@ -157,3 +157,4 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 
 	return next.ServeHTTP(w, r)
 }
+

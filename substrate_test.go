@@ -13,25 +13,17 @@ import (
 func checkUsagePool(t *testing.T) {
 	t.Helper()
 
-	emptyPool := true
 	pool.Range(func(key, value any) bool {
 		ref, exists := pool.References(key)
 		if exists && ref > 0 {
 			t.Errorf("Pool still contains key '%s' with %d references", key, ref)
-			emptyPool = false
 		}
 		return true
 	})
-
-	if emptyPool {
-		t.Log("Usage pool is empty as expected")
-	}
 }
 
 // TestAppLifecycle tests the basic lifecycle of the App
 func TestAppLifecycle(t *testing.T) {
-	return
-	// Create a new App instance with a test logger
 	app := &App{
 		log:   zap.NewNop(),
 		mutex: sync.Mutex{},
@@ -48,41 +40,30 @@ func TestAppLifecycle(t *testing.T) {
 		t.Fatalf("Provision failed: %v", err)
 	}
 
-	// Verify server was created in the pool
-	obj, loaded := pool.LoadOrStore("server", nil)
-	if !loaded {
-		t.Fatal("Server was not created during provision")
-	}
-	server, ok := obj.(*Server)
-	if !ok {
-		t.Fatal("Server object is not of type *Server")
-	}
-	if server.app != app {
-		t.Fatal("Server app reference is incorrect")
-	}
-
-	// Test Start
 	err = app.Start()
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
 
-	// Verify server is running
-	if server.Host == "" {
+	if app.server == nil {
+		t.Fatal("Server is nil, server may not be running")
+	}
+
+	if app.server.app != app {
+		t.Fatal("Server app reference is incorrect")
+	}
+
+	if app.server.Host == "" {
 		t.Fatal("Server host is empty, server may not be running")
 	}
 
-	// Test Stop
 	err = app.Stop()
 	if err != nil {
 		t.Fatalf("Stop failed: %v", err)
 	}
 
-	// Verify resources were cleaned up
 	checkUsagePool(t)
 
-	// Ensure the server is completely removed from the pool for test isolation
-	pool.Delete("server")
 }
 
 // TestAppEnvironmentPropagation tests that environment settings are properly propagated
@@ -100,7 +81,6 @@ func TestAppEnvironmentPropagation(t *testing.T) {
 		Root: "/tmp",
 		app:  app,
 		log:  app.log,
-		key:  "test-key",
 	}
 
 	// Create a command with the watcher
@@ -127,3 +107,4 @@ func TestAppEnvironmentPropagation(t *testing.T) {
 		t.Errorf("Restart policy not properly set, got %s", cmd.RestartPolicy)
 	}
 }
+

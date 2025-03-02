@@ -179,17 +179,17 @@ func TestServerServeHTTP(t *testing.T) {
 func TestServerSubmitOrder(t *testing.T) {
 	watcher := &Watcher{
 		Root: "/tmp",
-		key:  "test-key",
 		log:  zap.NewNop(),
 		cmd:  &execCmd{},
 	}
 
-	watcherPool.LoadOrStore("test-key", watcher)
-	defer watcherPool.Delete("test-key")
+	watchers := make(map[string]*Watcher)
+	watchers["abc"] = watcher
 
 	server := &Server{
-		log: zap.NewNop(),
-		app: &App{},
+		log:      zap.NewNop(),
+		app:      &App{},
+		watchers: watchers,
 	}
 
 	order := Order{
@@ -198,7 +198,7 @@ func TestServerSubmitOrder(t *testing.T) {
 	}
 
 	orderJSON, _ := json.Marshal(order)
-	req := httptest.NewRequest("POST", "/test-key", strings.NewReader(string(orderJSON)))
+	req := httptest.NewRequest("POST", "/abc", strings.NewReader(string(orderJSON)))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 

@@ -2,8 +2,6 @@ package substrate
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"os/user"
@@ -13,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/caddyserver/caddy/v2"
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
 )
@@ -39,7 +36,6 @@ type Watcher struct {
 	Root  string
 	Order *Order // Current active order
 
-	key       string
 	cmd       *execCmd // Current command answering queries
 	newCmd    *execCmd // New command being loaded
 	watcher   *fsnotify.Watcher
@@ -48,48 +44,7 @@ type Watcher struct {
 	mutex     sync.Mutex
 	app       *App
 	substFile string
-	server    *Server
-}
-
-var watcherPool = caddy.NewUsagePool()
-
-func GetWatcher(key string) *Watcher {
-	obj, loaded := watcherPool.LoadOrStore(key, nil)
-	if !loaded {
-		watcherPool.Delete(key)
-		return nil
-	}
-	return obj.(*Watcher)
-}
-
-func GetOrCreateWatcher(root string, app *App) *Watcher {
-	// generate key based on root.
-	hash := sha1.Sum(append(salt, []byte(root)...))
-	key := hex.EncodeToString(hash[:])
-
-	// Check if it exists in the pool
-	obj, loaded := watcherPool.LoadOrStore(key, &Watcher{
-		Root: root,
-		app:  app,
-		log:  app.log.With(zap.String("root", root)),
-		key:  key,
-	})
-
-	w := obj.(*Watcher)
-	if !loaded {
-		// Get the server from the pool or create a new one
-		serverObj, _ := pool.LoadOrStore("server", &Server{})
-		w.server = serverObj.(*Server)
-		w.server.log = app.log.Named("substrate server")
-
-		if err := w.init(); err != nil {
-			w.log.Error("Failed to initialize watcher", zap.Error(err))
-			watcherPool.Delete(key)
-			return nil
-		}
-	}
-
-	return w
+	suburl    string
 }
 
 func (w *Watcher) init() error {
@@ -271,7 +226,6 @@ func (w *Watcher) Close() error {
 		w.newCmd = nil
 	}
 
-	watcherPool.Delete(w.key)
 	return nil
 }
 
@@ -379,3 +333,4 @@ func (w *Watcher) Submit(o *Order) {
 		oldCmd.Stop()
 	}
 }
+

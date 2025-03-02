@@ -18,9 +18,10 @@ type Server struct {
 	http.Server
 	Host string
 
-	app     *App
-	readyCh chan struct{}
-	log     *zap.Logger
+	watchers map[string]*Watcher
+	app      *App
+	readyCh  chan struct{}
+	log      *zap.Logger
 }
 
 var (
@@ -33,6 +34,8 @@ func (s *Server) Start() error {
 	}
 
 	s.readyCh = make(chan struct{})
+
+	s.watchers = make(map[string]*Watcher)
 
 	addr, err := caddy.ParseNetworkAddressWithDefaults("localhost", "tcp", 0)
 	if err != nil {
@@ -83,18 +86,14 @@ func (s *Server) Stop() {
 	s.readyCh = nil
 	s.Host = ""
 	s.app = nil
+	for _, watcher := range s.watchers {
+		watcher.Close()
+	}
+	s.watchers = nil
 }
 
 func (s *Server) Destruct() error {
 	s.Stop()
-
-	// Clean up all watchers
-	watcherPool.Range(func(key, value any) bool {
-		watcher := value.(*Watcher)
-		watcher.Close()
-		return true
-	})
-
 	return nil
 }
 
@@ -149,7 +148,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Path[1:]
 
 	// Find the watcher with this key
-	watcher := GetWatcher(key)
+	watcher := s.watchers[key]
 	if watcher == nil {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		if s.log != nil {

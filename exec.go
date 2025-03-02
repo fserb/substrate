@@ -48,8 +48,8 @@ func (s *execCmd) newExecCommand() *exec.Cmd {
 	}
 
 	// Check if watcher and server are not nil before accessing
-	if s.watcher != nil && s.watcher.server != nil {
-		env = append(env, fmt.Sprintf("SUBSTRATE=%s/%s", s.watcher.server.Host, s.watcher.key))
+	if s.watcher != nil && s.watcher.app.server != nil {
+		env = append(env, fmt.Sprintf("SUBSTRATE=%s", s.watcher.suburl))
 	}
 
 	if s.User != "" {
@@ -194,3 +194,4 @@ func (s *execCmd) Destruct() error {
 	s.Stop()
 	return nil
 }
+

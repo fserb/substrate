@@ -12,27 +12,6 @@ import (
 )
 
 func TestWatcherGetWatcher(t *testing.T) {
-	watcher := &Watcher{
-		Root: "/tmp",
-		key:  "test-key",
-	}
-
-	watcherPool.LoadOrStore("test-key", watcher)
-	defer watcherPool.Delete("test-key")
-
-	result := GetWatcher("test-key")
-	if result.key != watcher.key || result.Root != watcher.Root {
-		t.Errorf("GetWatcher returned watcher with key=%s, Root=%s, want key=%s, Root=%s",
-			result.key, result.Root, watcher.key, watcher.Root)
-	}
-
-	result = GetWatcher("nonexistent")
-	if result != nil {
-		t.Errorf("GetWatcher returned %v, want nil", result)
-	}
-}
-
-func TestWatcherGetOrCreateWatcher(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "watcher-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -40,8 +19,9 @@ func TestWatcherGetOrCreateWatcher(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	app := &App{log: zap.NewNop()}
+	app.Start()
 
-	watcher := GetOrCreateWatcher(tmpDir, app)
+	watcher := app.GetWatcher(tmpDir)
 	if watcher == nil {
 		t.Fatal("GetOrCreateWatcher returned nil")
 	}
@@ -54,12 +34,12 @@ func TestWatcherGetOrCreateWatcher(t *testing.T) {
 		t.Errorf("Watcher.app = %v, want %v", watcher.app, app)
 	}
 
-	result := GetOrCreateWatcher(tmpDir, app)
+	result := app.GetWatcher(tmpDir)
 	if result != watcher {
 		t.Errorf("GetOrCreateWatcher returned %v, want %v", result, watcher)
 	}
 
-	watcher.Close()
+	app.Stop()
 }
 
 func TestWatcherIsReady(t *testing.T) {
@@ -184,23 +164,19 @@ func TestWatcherClose(t *testing.T) {
 	app := &App{
 		log: zap.NewNop(),
 	}
+	app.Start()
 
 	// Create a watcher
-	watcher := GetOrCreateWatcher(tmpDir, app)
+	watcher := app.GetWatcher(tmpDir)
+
 	if watcher == nil {
 		t.Fatal("GetOrCreateWatcher returned nil")
 	}
 
-	key := watcher.key
-
 	watcher.cmd = &execCmd{}
 	watcher.newCmd = &execCmd{}
 
-	// Close the watcher
-	err = watcher.Close()
-	if err != nil {
-		t.Errorf("Close() returned error: %v", err)
-	}
+	app.Stop()
 
 	if watcher.cancel != nil {
 		t.Error("cancel function was not cleared")
@@ -216,10 +192,6 @@ func TestWatcherClose(t *testing.T) {
 
 	if watcher.newCmd != nil {
 		t.Error("newCmd was not cleared")
-	}
-
-	if obj, loaded := watcherPool.LoadOrStore(key, nil); loaded {
-		t.Errorf("Watcher was not removed from pool, got %v", obj)
 	}
 }
 

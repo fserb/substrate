@@ -2,6 +2,7 @@ package substrate
 
 import (
 	"crypto/rand"
+	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -48,8 +49,9 @@ type App struct {
 	RedirectStdout *outputTarget     `json:"redirect_stdout,omitempty"`
 	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
 
-	log   *zap.Logger
-	mutex sync.Mutex
+	log    *zap.Logger
+	mutex  sync.Mutex
+	server *Server
 }
 
 func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) {
@@ -125,7 +127,7 @@ func parseRedirectGlobal(d *caddyfile.Dispenser) (*outputTarget, error) {
 	return nil, fmt.Errorf("Invalid redirect target: %s", target.Type)
 }
 
-func (App) CaddyModule() caddy.ModuleInfo {
+func (h App) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
 		ID:  "substrate",
 		New: func() caddy.Module { return new(App) },
@@ -136,15 +138,6 @@ func (h *App) Provision(ctx caddy.Context) error {
 	if h.log == nil {
 		h.log = ctx.Logger(h)
 	}
-	h.log.Info("Provisioning substrate")
-
-	// Get the server from the pool or create a new one
-	obj, _ := pool.LoadOrStore("server", &Server{})
-	server := obj.(*Server)
-	server.log = h.log.Named("substrate server")
-	server.app = h
-
-	server.Start()
 
 	return nil
 }
@@ -153,48 +146,52 @@ func (h *App) Start() error {
 	h.log.Info("Starting substrate")
 
 	// Get the server and wait for it to start
-	obj, _ := pool.LoadOrStore("server", &Server{})
-	server := obj.(*Server)
-	server.WaitForStart(h)
+	obj, loaded := pool.LoadOrStore("server", &Server{})
+	h.server = obj.(*Server)
+	if !loaded {
+		h.server.log = h.log.Named("substrate server")
+		h.server.app = h
+		h.server.Start()
+	}
+
+	h.server.WaitForStart(h)
+
+	for _, watcher := range h.server.watchers {
+		watcher.Close()
+	}
+	h.server.watchers = make(map[string]*Watcher)
 
 	return nil
 }
 
 func (h *App) Stop() error {
 	h.log.Info("Stopping substrate")
-
-	// Get the server before deleting it from the pool
-	obj, loaded := pool.LoadOrStore("server", nil)
-	if loaded && obj != nil {
-		server, ok := obj.(*Server)
-		if ok && server != nil {
-			server.Stop()
-		}
-	}
-
-	// Clean up the server from the pool - completely remove it
 	pool.Delete("server")
-
-	// Ensure all references are gone
-	for {
-		refs, exists := pool.References("server")
-		if !exists || refs <= 0 {
-			break
-		}
-		pool.Delete("server")
-	}
-
-	// Clean up all watchers in the pool
-	watcherPool.Range(func(key, value any) bool {
-		if value != nil {
-			watcher, ok := value.(*Watcher)
-			if ok && watcher != nil {
-				watcher.Close()
-			}
-		}
-		watcherPool.Delete(key)
-		return true
-	})
-
 	return nil
 }
+
+func (h *App) GetWatcher(root string) *Watcher {
+	hash := sha1.Sum(append(salt, []byte(root)...))
+	key := hex.EncodeToString(hash[:])
+
+	got, ok := h.server.watchers[key]
+	if ok {
+		return got
+	}
+
+	watcher := &Watcher{
+		Root:   root,
+		app:    h,
+		log:    h.log.With(zap.String("root", root)),
+		suburl: fmt.Sprintf("%s/%s", h.server.Host, key),
+	}
+
+	if err := watcher.init(); err != nil {
+		h.log.Error("Failed to initialize watcher", zap.Error(err))
+		return nil
+	}
+
+	h.server.watchers[key] = watcher
+	return watcher
+}
+
