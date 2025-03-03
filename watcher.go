@@ -69,7 +69,6 @@ func (w *Watcher) init() error {
 		return fmt.Errorf("root directory must be an absolute path")
 	}
 
-	// Verify the root directory exists
 	if _, err := os.Stat(w.Root); os.IsNotExist(err) {
 		return fmt.Errorf("root directory does not exist: %w", err)
 	}
@@ -279,25 +278,21 @@ func (w *Watcher) IsReady() bool {
 // WaitUntilReady waits for the watcher to be ready or determines it has no substrate
 // Returns true if the watcher is ready, false if there's no substrate or timeout occurs
 func (w *Watcher) WaitUntilReady(timeout time.Duration) bool {
-	// Use mutex to safely check if ready
-	w.mutex.Lock()
+	// We have an active order working.
 	if w.cmd != nil && w.Order != nil {
-		w.mutex.Unlock()
 		return true
 	}
-	w.mutex.Unlock()
 
-	// If there's no substrate file at all, don't wait
-	if _, err := os.Stat(filepath.Join(w.Root, "substrate")); os.IsNotExist(err) {
+	// We don't have a substrate file at all.
+	if w.cmd == nil && w.newCmd == nil {
 		return false
 	}
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		w.mutex.Lock()
-		ready := w.cmd != nil && w.Order != nil
+		ready := (w.cmd != nil && w.Order != nil) || (w.cmd == nil && w.newCmd == nil)
 		w.mutex.Unlock()
-
 		if ready {
 			return true
 		}
@@ -364,6 +359,7 @@ func (w *Watcher) Submit(o *Order) {
 // processMatchers processes match patterns and returns sorted matchers
 func (w *Watcher) processMatchers(patterns []string) []orderMatcher {
 	if len(patterns) == 0 {
+		w.log.Info("No match patterns to process")
 		return nil
 	}
 
@@ -408,3 +404,4 @@ func (w *Watcher) processMatchers(patterns []string) []orderMatcher {
 
 	return matchers
 }
+

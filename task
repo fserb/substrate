@@ -18,6 +18,10 @@ function test {
   CGO_ENABLED=0 go test . "$@"
 }
 
+function speck {
+  tests/speck.js "$@"
+}
+
 function help {
   echo "$0 <task> <args>"
   echo "Tasks:"

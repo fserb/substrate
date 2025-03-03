@@ -9,7 +9,7 @@ await fetch(SUB, {
   },
   body: JSON.stringify({
     host: `:${PORT}`,
-    match: [".md"],
+    match: ["*.md"],
     paths: ["/up"],
     catch_all: ["/all.md"],
   }),
@@ -17,7 +17,6 @@ await fetch(SUB, {
 
 Deno.serve({ port: PORT }, (req) => {
   return new Response(`SUBSTRATE
-sub: ${SUB}
 Request path: ${req.url}
 X-Forwarded-Path: ${req.headers.get("x-forwarded-path")}
 `);

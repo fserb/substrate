@@ -3,6 +3,7 @@
   substrate
   log {
     output stdout
+    #output discard
     format console
     level DEBUG
   }

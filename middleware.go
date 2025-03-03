@@ -37,11 +37,6 @@ func (s *SubstrateHandler) findBestResource(r *http.Request, watcher *Watcher) *
 
 	root := s.watcher.Root
 
-	s.log.Info("findBestResource",
-		zap.Any("order", watcher.Order),
-		zap.String("path", r.URL.Path),
-		zap.String("root", root))
-
 	reqPath := caddyhttp.CleanPath(r.URL.Path, true)
 
 	if watcher.Order.matchers != nil {
@@ -105,7 +100,7 @@ func (s *SubstrateHandler) matchPath(r *http.Request, watcher *Watcher) bool {
 	return false
 }
 
-func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	// Get the root directory from the request context
 	v := caddyhttp.GetVar(r.Context(), "root")
 	root, ok := v.(string)
@@ -116,13 +111,12 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 	// Get or create a watcher for this root if we don't already have one
 	if s.watcher == nil {
 		s.log.Debug("Creating watcher for root directory", zap.String("root", root))
-		watcher := s.app.GetWatcher(root)
-		if watcher == nil {
+		s.watcher = s.app.GetWatcher(root)
+		if s.watcher == nil {
 			s.log.Error("Failed to create substrate watcher")
 			http.Error(w, "Failed to create substrate", http.StatusInternalServerError)
 			return nil
 		}
-		s.watcher = watcher
 	}
 
 	if !s.watcher.WaitUntilReady(5 * time.Second) {
@@ -136,14 +130,11 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 		return nil
 	}
 
-	s.log.Warn("QUERY")
-
 	useProxy := s.matchPath(r, s.watcher)
 	if !useProxy {
 		match := s.findBestResource(r, s.watcher)
 		if match != nil {
 			useProxy = true
-			s.log.Debug("Found matching resource", zap.String("resource", *match))
 			r.URL.Path = *match
 		}
 	}
