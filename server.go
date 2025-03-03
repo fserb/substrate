@@ -195,17 +195,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the command from the watcher
-	watcher.mutex.Lock()
-	var cmd *execCmd
-	if watcher.cmd != nil {
-		cmd = watcher.cmd
-	} else if watcher.newCmd != nil {
-		cmd = watcher.newCmd
-	}
-	watcher.mutex.Unlock()
-
-	if cmd == nil {
+	if watcher.cmd == nil {
 		logger.Error("Substrate command not found")
 		http.Error(w, "Not Found", http.StatusNotFound)
 		return
@@ -226,3 +216,4 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Order submitted successfully"))
 }
+

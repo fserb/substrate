@@ -8,7 +8,6 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
-	"sync"
 	"syscall"
 	"time"
 
@@ -51,11 +50,9 @@ type Watcher struct {
 	Order *Order
 
 	cmd     *execCmd           // Current command answering queries
-	newCmd  *execCmd           // New command being loaded
 	watcher *fsnotify.Watcher  // File system watcher
 	log     *zap.Logger        // Logger
 	cancel  context.CancelFunc // Function to cancel the watch goroutine
-	mutex   sync.Mutex         // Protects access to cmd, newCmd, and Order
 	app     *App               // Reference to the parent App
 	suburl  string             // URL for the substrate process to communicate with
 }
@@ -93,17 +90,7 @@ func (w *Watcher) init() error {
 		if !os.IsNotExist(err) {
 			w.log.Warn("Error checking substrate file", zap.Error(err))
 		}
-		w.mutex.Lock()
-		defer w.mutex.Unlock()
-		if w.cmd != nil {
-			w.cmd.Stop()
-			w.cmd = nil
-			if w.newCmd != nil {
-				w.newCmd.Stop()
-				w.newCmd = nil
-			}
-		}
-
+		w.stopCommand()
 		w.log.Info("No substrate file found")
 	}
 
@@ -136,7 +123,6 @@ func (w *Watcher) watch(ctx context.Context) {
 				return
 			}
 
-			// Guard against nil watcher with mutex protection
 			if w.watcher == nil {
 				return
 			}
@@ -150,21 +136,9 @@ func (w *Watcher) watch(ctx context.Context) {
 
 			switch {
 			case event.Op&(fsnotify.Create|fsnotify.Write) != 0:
-				// File was created or modified
 				w.startLoading()
 			case event.Op&fsnotify.Remove != 0:
-				// File was removed
-				w.mutex.Lock()
-				if w.cmd != nil {
-					w.cmd.Stop()
-					w.cmd = nil
-				}
-				if w.newCmd != nil {
-					w.newCmd.Stop()
-					w.newCmd = nil
-				}
-				w.mutex.Unlock()
-				w.log.Info("Substrate file removed")
+				w.stopCommand()
 			}
 
 		case err, ok := <-watcher.Errors:
@@ -188,14 +162,16 @@ func (w *Watcher) watch(ctx context.Context) {
 	}
 }
 
-func (w *Watcher) startLoading() {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
-
-	if w.newCmd != nil {
-		w.newCmd.Stop()
+func (w *Watcher) stopCommand() {
+	if w.cmd != nil {
+		w.log.Info("Stopping existing substrate process")
+		w.cmd.Stop()
+		w.cmd = nil
 	}
+	w.Order = nil
+}
 
+func (w *Watcher) startLoading() {
 	w.log.Info("Executing substrate")
 
 	cmd := &execCmd{
@@ -237,63 +213,40 @@ func (w *Watcher) startLoading() {
 		cmd.RedirectStderr = w.app.RedirectStderr
 	}
 
-	w.newCmd = cmd
-
-	go w.newCmd.Run()
+	w.stopCommand()
+	w.cmd = cmd
+	go w.cmd.Run()
 }
 
 // Close stops watching and cleans up resources
 func (w *Watcher) Close() {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
-
 	if w.cancel != nil {
 		w.cancel()
 		w.cancel = nil
 	}
-
 	if w.watcher != nil {
 		w.watcher.Close()
 		w.watcher = nil
 	}
-
-	if w.cmd != nil {
-		w.cmd.Stop()
-		w.cmd = nil
-	}
-
-	if w.newCmd != nil {
-		w.newCmd.Stop()
-		w.newCmd = nil
-	}
+	w.stopCommand()
 }
 
 // IsReady returns true if the watcher has a command with an order
 func (w *Watcher) IsReady() bool {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
 	return w.cmd != nil && w.Order != nil
 }
 
 // WaitUntilReady waits for the watcher to be ready or determines it has no substrate
 // Returns true if the watcher is ready, false if there's no substrate or timeout occurs
 func (w *Watcher) WaitUntilReady(timeout time.Duration) bool {
-	// We have an active order working.
-	if w.cmd != nil && w.Order != nil {
+	// We have an active order working or no substrate.
+	if w.cmd == nil || w.Order != nil {
 		return true
-	}
-
-	// We don't have a substrate file at all.
-	if w.cmd == nil && w.newCmd == nil {
-		return false
 	}
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		w.mutex.Lock()
-		ready := (w.cmd != nil && w.Order != nil) || (w.cmd == nil && w.newCmd == nil)
-		w.mutex.Unlock()
-		if ready {
+		if w.cmd == nil || w.Order != nil {
 			return true
 		}
 		time.Sleep(50 * time.Millisecond) // Short sleep to avoid busy waiting
@@ -303,8 +256,6 @@ func (w *Watcher) WaitUntilReady(timeout time.Duration) bool {
 
 // GetCmd returns the current command
 func (w *Watcher) GetCmd() *execCmd {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
 	return w.cmd
 }
 
@@ -334,26 +285,8 @@ func (w *Watcher) Submit(o *Order) {
 		})
 	}
 
-	// Now acquire the lock to update the watcher state
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
-
 	w.Order = o
-
-	if w.newCmd == nil {
-		return
-	}
-
-	oldCmd := w.cmd
-	w.cmd = w.newCmd
-	w.newCmd = nil
-
-	w.log.Info("New substrate ready and promoted")
-
-	if oldCmd != nil {
-		w.log.Info("Stopping old substrate process")
-		go oldCmd.Stop()
-	}
+	w.log.Info("New substrate ready and processed")
 }
 
 // processMatchers processes match patterns and returns sorted matchers

@@ -15,6 +15,6 @@
 http://localhost:8722 {
   root {$CWD}
   substrate
-  file_server browse
+  file_server
 }
 
