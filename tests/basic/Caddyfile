@@ -1,13 +1,18 @@
 {
-  admin :8721
+  admin localhost:8721
   substrate
   log {
-    output discard
+    output stdout
+    format console
+    level DEBUG
+  }
+  servers {
+    protocols h1
   }
 }
 
-:8722 {
-  root {$CWD}
+http://localhost:8722 {
+    root {$CWD}
   substrate
   file_server browse
 }

@@ -35,17 +35,14 @@ func (s *SubstrateHandler) findBestResource(r *http.Request, watcher *Watcher) *
 		return nil
 	}
 
-	v := caddyhttp.GetVar(r.Context(), "root")
-	root, ok := v.(string)
-	if !ok {
-		root = "."
-	}
+	root := s.watcher.Root
+
+	s.log.Info("findBestResource",
+		zap.Any("order", watcher.Order),
+		zap.String("path", r.URL.Path),
+		zap.String("root", root))
 
 	reqPath := caddyhttp.CleanPath(r.URL.Path, true)
-
-	if s.fileExists(caddyhttp.SanitizedPathJoin(root, reqPath)) {
-		return &reqPath
-	}
 
 	if watcher.Order.matchers != nil {
 		for _, m := range watcher.Order.matchers {
@@ -139,6 +136,8 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 		return nil
 	}
 
+	s.log.Warn("QUERY")
+
 	useProxy := s.matchPath(r, s.watcher)
 	if !useProxy {
 		match := s.findBestResource(r, s.watcher)
@@ -172,3 +171,4 @@ func (s SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 
 	return next.ServeHTTP(w, r)
 }
+

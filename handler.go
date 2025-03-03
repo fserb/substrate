@@ -53,7 +53,6 @@ type SubstrateHandler struct {
 	app     *App
 	fs      fs.FS
 	proxy   HostReverseProxy
-	ctx     *caddy.Context
 	watcher *Watcher
 }
 
@@ -65,7 +64,6 @@ func (s SubstrateHandler) CaddyModule() caddy.ModuleInfo {
 }
 
 func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
-	s.ctx = &ctx
 	s.log = ctx.Logger(s)
 
 	fs, ok := ctx.Filesystems().Get("")
@@ -93,7 +91,7 @@ func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 	}
 	s.proxy = &ReverseProxy{handler}
 
-	err = s.proxy.Provision(*s.ctx)
+	err = s.proxy.Provision(ctx)
 	if err != nil {
 		return fmt.Errorf("error provisioning reverse_proxy: %w", err)
 	}
@@ -104,3 +102,4 @@ func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 func parseSubstrateHandler(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
 	return &SubstrateHandler{}, nil
 }
+

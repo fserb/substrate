@@ -197,3 +197,4 @@ func (h *App) GetWatcher(root string) *Watcher {
 	h.server.watchers[key] = watcher
 	return watcher
 }
+

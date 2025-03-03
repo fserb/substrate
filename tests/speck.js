@@ -1,7 +1,7 @@
 #!/bin/sh
 // 2>/dev/null; exec deno test -A "$0" -- "$@"; exit
 
-import { dirname, join } from "jsr:@std/path@^1.0.8";
+import { dirname, join, relative, resolve } from "jsr:@std/path@^1.0.8";
 import { bold, cyan, red, yellow } from "jsr:@std/fmt@^1.0.5/colors";
 
 const basePath = import.meta.dirname;
@@ -14,8 +14,12 @@ const pgidRegistry = new Set();
 
 async function run(cmd) {
   const pgidFile = await Deno.makeTempFile({ prefix: "speck_pgid" });
-  const proc = new Deno.Command("bash", {
-    args: ["-c", `set -m; echo $$ > ${pgidFile}; exec ${cmd};`],
+  const proc = new Deno.Command("setsid", {
+    args: [
+      "/bin/bash",
+      "-c",
+      `echo $$ > ${pgidFile}; ${cmd}`,
+    ],
     env: {
       PATH: `${basePath}/_lib:${Deno.env.get("PATH")}`,
       DIR: basePath,
@@ -43,15 +47,38 @@ async function run(cmd) {
   } finally {
     reader.releaseLock();
   }
-  await process.stdout.cancel();
+
   const output = new TextDecoder().decode(outputBytes).trim();
+
+  // pipe remaining stdout to main process.
+  if (verbose) {
+    (async () => {
+      const reader = process.stdout.getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const writer = Deno.stdout.writable.getWriter();
+          await writer.write(value);
+          writer.releaseLock();
+        }
+      } finally {
+        reader.releaseLock();
+        await process.stdout.cancel();
+      }
+    })();
+  } else {
+    await process.stdout.cancel();
+  }
+
   return code === 0 ? output : `status: ${code}\n${output}`;
 }
 
 function cleanupProcesses() {
   for (const pgid of pgidRegistry) {
     try {
-      Deno.kill(pgid, "SIGKILL");
+      const process = new Deno.Command("kill", { args: ["-2", `-${pgid}`] });
+      process.outputSync();
     } catch (_) { /* ignore */ }
   }
   pgidRegistry.clear();
@@ -138,8 +165,6 @@ function setupTestsFromFile(file, range = []) {
       const testFile = join(tmpDir, file);
       const commands = await parseTestFile(testFile);
 
-      if (verbose) console.log(bold(`Testing ${file}`));
-
       try {
         Deno.chdir(testDir);
 
@@ -197,6 +222,10 @@ async function main() {
       "Usage: deno test test_framework.js -- [-v] path/to/testfile.sh[:start[:count]] ...",
     );
     Deno.exit(1);
+  }
+
+  for (const t of tests) {
+    t.file = relative(basePath, resolve(t.file));
   }
 
   cleanup = await setupTmpDir();

@@ -5,13 +5,13 @@ IFS=$'\n\t'
 DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 
 function run {
-  CGO_ENABLED=0 go run ./main run --config example/Caddyfile "$@"
+  CGO_ENABLED=0 go run main/main.go run --config example/Caddyfile "$@"
 }
 
 function build {
   CGO_ENABLED=0 go build -v -o caddy \
     -ldflags="-s -w" -trimpath -tags nobadger,nomysql,nopgx \
-    ./main
+    main/main.go
 }
 
 function test {
