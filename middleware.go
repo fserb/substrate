@@ -104,15 +104,19 @@ func (s *SubstrateHandler) matchPath(r *http.Request, watcher *Watcher) bool {
 }
 
 func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	// Get the root directory from the request context
-	v := caddyhttp.GetVar(r.Context(), "root")
-	root, ok := v.(string)
-	if !ok {
-		root = "."
+	fmt.Println("SUBSTRATE MW:", s.Prefix)
+	if !strings.HasPrefix(r.URL.Path, s.Prefix) {
+		return next.ServeHTTP(w, r)
 	}
 
-	// Get or create a watcher for this root if we don't already have one
 	if s.watcher == nil {
+		v := caddyhttp.GetVar(r.Context(), "root")
+		root, ok := v.(string)
+		if !ok {
+			root = "."
+		}
+		root += s.Prefix
+
 		s.log.Debug("Creating watcher for root directory", zap.String("root", root))
 		s.watcher = s.app.GetWatcher(root)
 		if s.watcher == nil {
@@ -127,10 +131,19 @@ func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 		return nil
 	}
 
+	if s.watcher.cmd == nil {
+		return next.ServeHTTP(w, r)
+	}
+
 	if s.watcher.Order == nil {
 		s.log.Error("Invalid order configuration")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return nil
+	}
+
+	origPath := r.URL.Path
+	if s.Prefix != "" {
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, s.Prefix)
 	}
 
 	useProxy := s.matchPath(r, s.watcher)
@@ -149,7 +162,6 @@ func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 	if useProxy {
 		s.log.Debug("Proxying request", zap.String("upstream", s.watcher.Order.Host))
 		s.proxy.SetHost(s.watcher.Order.Host)
-
 		// Add forwarding headers
 		var scheme string
 		if r.TLS == nil {
@@ -163,6 +175,7 @@ func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 		return s.proxy.ServeHTTP(w, r, next)
 	}
 
+	r.URL.Path = origPath
 	return next.ServeHTTP(w, r)
 }
 

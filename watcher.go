@@ -83,16 +83,7 @@ func (w *Watcher) init() error {
 	}
 
 	// Check if substrate file already exists
-	substFile := filepath.Join(w.Root, "substrate")
-	if _, err := os.Stat(substFile); err == nil {
-		w.startLoading()
-	} else {
-		if !os.IsNotExist(err) {
-			w.log.Warn("Error checking substrate file", zap.Error(err))
-		}
-		w.stopCommand()
-		w.log.Info("No substrate file found")
-	}
+	w.startLoading()
 
 	// Start watching for changes
 	ctx, cancel := context.WithCancel(context.Background())
@@ -104,8 +95,6 @@ func (w *Watcher) init() error {
 
 // watch monitors the substrate file for changes
 func (w *Watcher) watch(ctx context.Context) {
-	// Guard against nil watcher at the beginning
-
 	watcher := w.watcher
 
 	if watcher == nil {
@@ -132,14 +121,8 @@ func (w *Watcher) watch(ctx context.Context) {
 				continue
 			}
 
-			w.log.Info("Substrate file event", zap.String("event", event.Op.String()))
-
-			switch {
-			case event.Op&(fsnotify.Create|fsnotify.Write) != 0:
-				w.startLoading()
-			case event.Op&fsnotify.Remove != 0:
-				w.stopCommand()
-			}
+			w.log.Debug("Substrate file event", zap.String("event", event.Op.String()))
+			w.startLoading()
 
 		case err, ok := <-watcher.Errors:
 			if !ok {
@@ -172,10 +155,17 @@ func (w *Watcher) stopCommand() {
 }
 
 func (w *Watcher) startLoading() {
+	substFile := filepath.Join(w.Root, "substrate")
+	if _, err := os.Stat(substFile); err != nil {
+		w.log.Info("No substrate file found")
+		w.stopCommand()
+		return
+	}
+
 	w.log.Info("Executing substrate")
 
 	cmd := &execCmd{
-		Command: []string{filepath.Join(w.Root, "substrate")},
+		Command: []string{substFile},
 		Dir:     w.Root,
 		watcher: w,
 		log:     w.log,
@@ -287,6 +277,7 @@ func (w *Watcher) Submit(o *Order) {
 
 	w.Order = o
 	w.log.Info("New substrate ready and processed")
+	clearCache()
 }
 
 // processMatchers processes match patterns and returns sorted matchers

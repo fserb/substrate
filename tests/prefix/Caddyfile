@@ -1,0 +1,20 @@
+{
+  admin localhost:8721
+  substrate
+  log {
+    output stdout
+    #output discard
+    format console
+    level DEBUG
+  }
+  servers {
+    protocols h1
+  }
+}
+
+http://localhost:8722 {
+  root {$CWD}
+  substrate /pre
+  file_server
+}
+

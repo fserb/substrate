@@ -128,7 +128,7 @@ func clearCache() error {
 	currentCtx := caddy.ActiveContext()
 
 	app, err := currentCtx.AppIfConfigured("cache")
-	if err != nil {
+	if app == nil || err != nil {
 		return nil
 	}
 

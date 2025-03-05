@@ -20,10 +20,10 @@ const (
 
 // Syntax:
 //
-//	substrate
+//	substrate [subpath]
 func init() {
 	caddy.RegisterModule(SubstrateHandler{})
-	httpcaddyfile.RegisterHandlerDirective("substrate", parseSubstrateHandler)
+	httpcaddyfile.RegisterDirective("substrate", parseSubstrateDirective)
 	httpcaddyfile.RegisterDirectiveOrder("substrate", httpcaddyfile.Before, "invoke")
 }
 
@@ -49,6 +49,8 @@ func (s *ReverseProxy) SetHost(host string) {
 
 // SubstrateHandler handles requests by proxying to a substrate process
 type SubstrateHandler struct {
+	Prefix string `json:"prefix,omitempty"`
+
 	log     *zap.Logger
 	app     *App
 	fs      fs.FS
@@ -99,7 +101,21 @@ func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 	return nil
 }
 
-func parseSubstrateHandler(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
-	return &SubstrateHandler{}, nil
+func parseSubstrateDirective(h httpcaddyfile.Helper) ([]httpcaddyfile.ConfigValue, error) {
+	if !h.Next() {
+		return nil, h.ArgErr()
+	}
+
+	var prefix string
+
+	if h.NextArg() {
+		prefix = h.Val()
+		if prefix[0] != '/' {
+			prefix = "/" + prefix
+		}
+	}
+
+	fmt.Println("SUBSTRATE ROUTE: ", prefix)
+	return h.NewRoute(caddy.ModuleMap{}, &SubstrateHandler{Prefix: prefix}), nil
 }
 
