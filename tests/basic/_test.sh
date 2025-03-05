@@ -12,6 +12,9 @@ $ curl -s http://localhost:8722/page
 SUBSTRATE
 Request path: http://localhost:8722/page.md
 X-Forwarded-Path: /page
+$ curl -w "%{http_code}" -s http://localhost:8722/substrate
+Not Found
+404
 $ _caddy stop
 *
 

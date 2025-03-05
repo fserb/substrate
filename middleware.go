@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"time"
@@ -104,9 +105,23 @@ func (s *SubstrateHandler) matchPath(r *http.Request, watcher *Watcher) bool {
 }
 
 func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	fmt.Println("SUBSTRATE MW:", s.Prefix)
+	r.URL.Path = caddyhttp.CleanPath(r.URL.Path, true)
+
+	origPath := r.URL.Path
+	decodedPath, err := url.QueryUnescape(r.URL.Path)
+	if err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return nil
+	}
+	r.URL.Path = decodedPath
+
 	if !strings.HasPrefix(r.URL.Path, s.Prefix) {
 		return next.ServeHTTP(w, r)
+	}
+
+	if r.URL.Path == "/substrate" {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return nil
 	}
 
 	if s.watcher == nil {
@@ -141,7 +156,6 @@ func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 		return nil
 	}
 
-	origPath := r.URL.Path
 	if s.Prefix != "" {
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, s.Prefix)
 	}
