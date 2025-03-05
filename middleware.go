@@ -178,4 +178,3 @@ func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 	r.URL.Path = origPath
 	return next.ServeHTTP(w, r)
 }
-

@@ -12,14 +12,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// outputTarget defines where command output should be directed
-type outputTarget struct {
-	// Type can be "null", "stdout", "stderr", or "file"
-	Type string `json:"type,omitempty"`
-	// File is the path to write output to when Type is "file"
-	File string `json:"file,omitempty"`
-}
-
 // execCmd represents a command to be executed by the substrate system
 type execCmd struct {
 	Command        []string          `json:"command,omitempty"`

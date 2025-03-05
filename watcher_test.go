@@ -222,4 +222,3 @@ func TestWatcherWatch(t *testing.T) {
 
 	watcher.Close()
 }
-

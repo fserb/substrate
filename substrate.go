@@ -43,6 +43,14 @@ var (
 	_ caddy.App         = (*App)(nil)
 )
 
+// outputTarget defines where command output should be directed
+type outputTarget struct {
+	// Type can be "null", "stdout", "stderr", or "file"
+	Type string `json:"type,omitempty"`
+	// File is the path to write output to when Type is "file"
+	File string `json:"file,omitempty"`
+}
+
 // App is the main substrate application that manages the substrate server
 // and provides configuration for substrate processes.
 type App struct {
@@ -197,4 +205,3 @@ func (h *App) GetWatcher(root string) *Watcher {
 	h.server.watchers[key] = watcher
 	return watcher
 }
-

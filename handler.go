@@ -118,4 +118,3 @@ func parseSubstrateDirective(h httpcaddyfile.Helper) ([]httpcaddyfile.ConfigValu
 	fmt.Println("SUBSTRATE ROUTE: ", prefix)
 	return h.NewRoute(caddy.ModuleMap{}, &SubstrateHandler{Prefix: prefix}), nil
 }
-
