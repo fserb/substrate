@@ -28,32 +28,16 @@ To enable the module globally, use the `substrate` directive in the global optio
 
 ```caddyfile
 {
-    substrate
+    substrate {
+        env <key> <value>
+        restart_policy always|never|on_failure
+        redirect_stdout stdout|stderr|null|file <filename>
+        redirect_stderr stdout|stderr|null|file <filename>
+    }
 }
 ```
 
-### Handler Configuration
-
-The `substrate` directive can be added to site blocks to define command execution logic. The syntax is:
-
-```caddyfile
-substrate {
-    command <command> [arguments...]
-    env <key> <value>
-    user <username>
-    dir <directory>
-    restart_policy always|never|on_failure
-    redirect_stdout stdout|stderr|null|file <filename>
-    redirect_stderr stdout|stderr|null|file <filename>
-}
-```
-
-### Directive Details
-
-- **command**: Command to execute along with its arguments.
 - **env**: Set environment variables for the process (can be repeated).
-- **user**: Run the command as the specified user.
-- **dir**: Set the working directory.
 - **restart_policy**: Restart behavior.
   - `always`: Always restart when the process exits.
   - `never`: Never restart.
@@ -64,21 +48,20 @@ substrate {
   - `null`: Discard output.
   - `file <filename>`: Write output to the specified file.
 
-## Example Configuration
+
+### Handler Configuration
+
+The `substrate` directive can be added to site blocks to define command execution logic. The syntax is:
 
 ```caddyfile
-example.com {
-    substrate {
-        command /usr/bin/myapp --flag value
-        env FOO bar
-        user appuser
-        dir /var/myapp
-        restart_policy on_failure
-        redirect_stdout file /var/log/myapp/stdout.log
-        redirect_stderr stderr
-    }
-}
+server:80 {
+  root /x/y/z
+  substrate [subpath]
+  file_serve
 ```
+
+`substrate` will look for a `substrate` executable in the root directory.
+
 
 ## How It Works
 
@@ -89,7 +72,7 @@ JSON, with the following format:
 ```js
 {
   host: "localhost:3333", // the host:port where the proxy is listening at.
-  match: [".ext"],        // the list of file extensions we should listen to.
+  match: ["*.ext"],       // the list of file extensions we should listen to.
                           // this also automatically handles paths with the omitted
                           // extension or index.ext.
   paths: ["/up"],         // hard-coded paths that this proxy can answer.
