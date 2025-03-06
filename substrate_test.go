@@ -69,10 +69,8 @@ func TestAppLifecycle(t *testing.T) {
 // TestAppEnvironmentPropagation tests that environment settings are properly propagated
 func TestAppEnvironmentPropagation(t *testing.T) {
 	app := &App{
-		log:            zap.NewNop(),
-		Env:            map[string]string{"TEST_KEY": "test_value"},
-		RedirectStdout: &outputTarget{Type: "null"},
-		RedirectStderr: &outputTarget{Type: "null"},
+		log: zap.NewNop(),
+		Env: map[string]string{"TEST_KEY": "test_value"},
 	}
 
 	// Create a mock watcher to test environment propagation
@@ -96,23 +94,6 @@ func TestAppEnvironmentPropagation(t *testing.T) {
 
 	if cmd.Env["TEST_KEY"] != "test_value" {
 		t.Errorf("Environment variable not properly set, got %v", cmd.Env)
-	}
-
-	// Test with different output targets
-	if cmd.RedirectStdout == nil {
-		cmd.RedirectStdout = app.RedirectStdout
-	}
-
-	if cmd.RedirectStdout.Type != "null" {
-		t.Errorf("RedirectStdout not properly set, got %s", cmd.RedirectStdout.Type)
-	}
-
-	if cmd.RedirectStderr == nil {
-		cmd.RedirectStderr = app.RedirectStderr
-	}
-
-	if cmd.RedirectStderr.Type != "null" {
-		t.Errorf("RedirectStderr not properly set, got %s", cmd.RedirectStderr.Type)
 	}
 }
 
@@ -159,4 +140,3 @@ func TestAppCaddyModule(t *testing.T) {
 		t.Errorf("Expected New() to return *App, got %T", module)
 	}
 }
-

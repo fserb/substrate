@@ -1,6 +1,7 @@
 package substrate
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -14,12 +15,10 @@ import (
 
 // execCmd represents a command to be executed by the substrate system
 type execCmd struct {
-	Command        []string          `json:"command,omitempty"`
-	Env            map[string]string `json:"env,omitempty"`
-	User           string            `json:"user,omitempty"`
-	Dir            string            `json:"dir,omitempty"`
-	RedirectStdout *outputTarget     `json:"redirect_stdout,omitempty"`
-	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
+	Command []string          `json:"command,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	User    string            `json:"user,omitempty"`
+	Dir     string            `json:"dir,omitempty"`
 
 	cancel  context.CancelFunc
 	log     *zap.Logger
@@ -57,23 +56,41 @@ func (s *execCmd) newExecCommand() *exec.Cmd {
 
 	cmd.Dir = s.Dir
 
-	outFile, err := getRedirectFile(s.RedirectStdout, "stdout")
+	// Set up pipes for stdout and stderr to capture output
+	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		if s.log != nil {
-			s.log.Error("Error opening process stdout", zap.Error(err))
+			s.log.Error("Error creating stdout pipe", zap.Error(err))
 		}
-		outFile = nil
-	}
-	errFile, err := getRedirectFile(s.RedirectStderr, "stderr")
-	if err != nil {
-		if s.log != nil {
-			s.log.Error("Error opening process stderr", zap.Error(err))
-		}
-		errFile = nil
 	}
 
-	cmd.Stdout = outFile
-	cmd.Stderr = errFile
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		if s.log != nil {
+			s.log.Error("Error creating stderr pipe", zap.Error(err))
+		}
+	}
+
+	// Set up goroutines to capture and log output
+	if s.watcher != nil && s.watcher.app != nil && stdoutPipe != nil {
+		go func() {
+			scanner := bufio.NewScanner(stdoutPipe)
+			for scanner.Scan() {
+				line := scanner.Text()
+				s.watcher.WriteStatusLog("S", line)
+			}
+		}()
+	}
+
+	if s.watcher != nil && s.watcher.app != nil && stderrPipe != nil {
+		go func() {
+			scanner := bufio.NewScanner(stderrPipe)
+			for scanner.Scan() {
+				line := scanner.Text()
+				s.watcher.WriteStatusLog("E", line)
+			}
+		}()
+	}
 
 	return cmd
 }
@@ -92,6 +109,11 @@ func (s *execCmd) Run() {
 	if s.Command == nil || len(s.Command) == 0 {
 		logger.Error("Cannot run empty command")
 		return
+	}
+
+	// Log status if watcher is available
+	if s.watcher != nil && s.watcher.app != nil {
+		s.watcher.WriteStatusLog("A", "Starting command")
 	}
 
 	outerctx, ocancel := context.WithCancel(context.Background())
@@ -113,7 +135,14 @@ cmdLoop:
 
 		if err := cmd.Start(); err != nil {
 			cmdLogger.Error("Failed to start command", zap.Error(err))
+			if s.watcher != nil && s.watcher.app != nil {
+				s.watcher.WriteStatusLog("A", fmt.Sprintf("Failed to start command: %v", err))
+			}
 			break cmdLoop
+		}
+
+		if s.watcher != nil && s.watcher.app != nil {
+			s.watcher.WriteStatusLog("A", "Command started successfully")
 		}
 
 		errCh := make(chan error, 1)
@@ -128,6 +157,11 @@ cmdLoop:
 			duration := time.Since(start)
 			if err != nil {
 				cmdLogger.Error("Command exited with error", zap.Error(err))
+				if s.watcher != nil && s.watcher.app != nil {
+					s.watcher.WriteStatusLog("A", fmt.Sprintf("Command exited with error: %v", err))
+				}
+			} else if s.watcher != nil && s.watcher.app != nil {
+				s.watcher.WriteStatusLog("A", "Command completed successfully")
 			}
 
 			if err == nil || duration > resetRestartDelay {
@@ -135,6 +169,9 @@ cmdLoop:
 			}
 
 			cmdLogger.Info("Restarting command", zap.Duration("delay", delay))
+			if s.watcher != nil && s.watcher.app != nil {
+				s.watcher.WriteStatusLog("A", fmt.Sprintf("Restarting command in %v", delay))
+			}
 
 			select {
 			case <-time.After(delay):
@@ -149,6 +186,9 @@ cmdLoop:
 
 		case <-cancelctx.Done():
 			cmdLogger.Info("Command cancelled")
+			if s.watcher != nil && s.watcher.app != nil {
+				s.watcher.WriteStatusLog("A", "Command cancelled")
+			}
 			cancel()
 			break cmdLoop
 		}
@@ -162,9 +202,15 @@ cmdLoop:
 	}
 
 	logger.Info("Sending interrupt signal to process")
+	if s.watcher != nil && s.watcher.app != nil {
+		s.watcher.WriteStatusLog("A", "Sending interrupt signal to process")
+	}
 
 	if err := cmd.Process.Signal(os.Interrupt); err != nil {
 		logger.Error("Interrupt failed, killing process", zap.Error(err))
+		if s.watcher != nil && s.watcher.app != nil {
+			s.watcher.WriteStatusLog("A", fmt.Sprintf("Interrupt failed, killing process: %v", err))
+		}
 		cmd.Process.Kill()
 		return
 	}
@@ -178,29 +224,16 @@ cmdLoop:
 	select {
 	case <-done:
 		logger.Info("Process exited gracefully")
+		if s.watcher != nil && s.watcher.app != nil {
+			s.watcher.WriteStatusLog("A", "Process exited gracefully")
+		}
 	case <-time.After(5 * time.Second):
 		logger.Error("Process did not exit in time, killing")
+		if s.watcher != nil && s.watcher.app != nil {
+			s.watcher.WriteStatusLog("A", "Process did not exit in time, killing")
+		}
 		cmd.Process.Kill()
 	}
-}
-
-func getRedirectFile(target *outputTarget, default_type string) (*os.File, error) {
-	t := default_type
-	if target != nil {
-		t = target.Type
-	}
-
-	switch t {
-	case "stdout":
-		return os.Stdout, nil
-	case "stderr":
-		return os.Stderr, nil
-	case "null":
-		return nil, nil
-	case "file":
-		return os.OpenFile(target.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	}
-	return nil, fmt.Errorf("Invalid redirect target: %s", target.Type)
 }
 
 func (s *execCmd) Stop() {

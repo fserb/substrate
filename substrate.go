@@ -8,7 +8,9 @@ import (
 	"log"
 	"math"
 	"math/big"
+	"os"
 	"sync"
+	"time"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
@@ -54,17 +56,17 @@ type outputTarget struct {
 // App is the main substrate application that manages the substrate server
 // and provides configuration for substrate processes.
 type App struct {
-	Env            map[string]string `json:"env,omitempty"`
-	RedirectStdout *outputTarget     `json:"redirect_stdout,omitempty"`
-	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	StatusLog outputTarget      `json:"status_log,omitempty"`
 
-	log    *zap.Logger
-	mutex  sync.Mutex
-	server *Server
+	log         *zap.Logger
+	mutex       sync.Mutex
+	server      *Server
+	statusLogFD *os.File
 }
 
 func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) {
-	app := &App{}
+	app := &App{StatusLog: outputTarget{Type: "stdout"}}
 
 	cur, ok := existingVal.(*App)
 	if ok {
@@ -83,18 +85,12 @@ func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) 
 					app.Env = map[string]string{}
 				}
 				app.Env[envKey] = envValue
-			case "redirect_stdout":
+			case "status_log":
 				target, err := parseRedirectGlobal(d)
 				if err != nil {
 					return nil, err
 				}
-				app.RedirectStdout = target
-			case "redirect_stderr":
-				target, err := parseRedirectGlobal(d)
-				if err != nil {
-					return nil, err
-				}
-				app.RedirectStderr = target
+				app.StatusLog = *target
 			}
 		}
 	}
@@ -145,6 +141,11 @@ func (h *App) Provision(ctx caddy.Context) error {
 func (h *App) Start() error {
 	h.log.Info("Starting substrate")
 
+	// Initialize status log if configured
+	if err := h.initStatusLog(); err != nil {
+		h.log.Error("Failed to initialize status log", zap.Error(err))
+	}
+
 	// Get the server and wait for it to start
 	obj, loaded := pool.LoadOrStore("server", &Server{})
 	h.server = obj.(*Server)
@@ -164,8 +165,44 @@ func (h *App) Start() error {
 	return nil
 }
 
+// initStatusLog initializes the status log based on the configured target
+func (h *App) initStatusLog() error {
+	switch h.StatusLog.Type {
+	case "stdout", "stderr", "null":
+		// These don't need initialization
+		return nil
+	case "file":
+		if h.StatusLog.File == "" {
+			return fmt.Errorf("status_log file path is empty")
+		}
+
+		// Create or open the log file
+		f, err := os.OpenFile(h.StatusLog.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err != nil {
+			return fmt.Errorf("failed to open status log file: %w", err)
+		}
+		h.statusLogFD = f
+
+		// Write a header to the log
+		timestamp := time.Now().Format(time.RFC3339)
+		fmt.Fprintf(f, "=== Substrate Status Log Started at %s ===\n", timestamp)
+		return nil
+	default:
+		return fmt.Errorf("invalid status log type: %s", h.StatusLog.Type)
+	}
+}
+
 func (h *App) Stop() error {
 	h.log.Info("Stopping substrate")
+
+	// Close status log file if open
+	if h.statusLogFD != nil {
+		timestamp := time.Now().Format(time.RFC3339)
+		fmt.Fprintf(h.statusLogFD, "=== Substrate Status Log Stopped at %s ===\n", timestamp)
+		h.statusLogFD.Close()
+		h.statusLogFD = nil
+	}
+
 	pool.Delete("server")
 	return nil
 }

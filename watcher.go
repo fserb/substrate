@@ -182,6 +182,7 @@ func (w *Watcher) watch(ctx context.Context) {
 func (w *Watcher) stopCommand() {
 	if w.cmd != nil {
 		w.log.Info("Stopping existing substrate process")
+		w.WriteStatusLog("A", "Stopping existing substrate process")
 		w.cmd.Stop()
 		w.cmd = nil
 	}
@@ -192,11 +193,13 @@ func (w *Watcher) startLoading() {
 	substFile := filepath.Join(w.Root, "substrate")
 	if _, err := os.Stat(substFile); err != nil {
 		w.log.Info("No substrate file found")
+		w.WriteStatusLog("A", "No substrate file found")
 		w.stopCommand()
 		return
 	}
 
 	w.log.Info("Executing substrate")
+	w.WriteStatusLog("A", "Executing substrate")
 
 	cmd := &execCmd{
 		Command: []string{substFile},
@@ -215,6 +218,7 @@ func (w *Watcher) startLoading() {
 				if err == nil {
 					cmd.User = u.Username
 					w.log.Info("Running as file owner", zap.String("user", cmd.User))
+					w.WriteStatusLog("A", fmt.Sprintf("Running as file owner: %s", cmd.User))
 				}
 			}
 		}
@@ -223,14 +227,6 @@ func (w *Watcher) startLoading() {
 	// Apply global configuration from app
 	if w.app.Env != nil && (cmd.Env == nil || len(cmd.Env) == 0) {
 		cmd.Env = w.app.Env
-	}
-
-	if cmd.RedirectStdout == nil {
-		cmd.RedirectStdout = w.app.RedirectStdout
-	}
-
-	if cmd.RedirectStderr == nil {
-		cmd.RedirectStderr = w.app.RedirectStderr
 	}
 
 	w.stopCommand()
@@ -279,10 +275,35 @@ func (w *Watcher) GetCmd() *execCmd {
 	return w.cmd
 }
 
+// WriteStatusLog writes a message to the status log with the given message type:
+// "S" for stdout, "E" for stderr, or "A" for status/app messages
+func (w *Watcher) WriteStatusLog(msgType, message string) {
+	if w.app == nil {
+		return
+	}
+
+	timestamp := time.Now().Format("15:04:05")
+	logLine := fmt.Sprintf("[%s] %s(%s): %s\n", timestamp, w.Root, msgType, message)
+
+	switch w.app.StatusLog.Type {
+	case "stdout":
+		fmt.Fprint(os.Stdout, logLine)
+	case "stderr":
+		fmt.Fprint(os.Stderr, logLine)
+	case "file":
+		if w.app.statusLogFD != nil {
+			fmt.Fprint(w.app.statusLogFD, logLine)
+		}
+	case "null":
+		// Do nothing
+	}
+}
+
 // Submit processes an order from a substrate process
 func (w *Watcher) Submit(o *Order) {
 	if o == nil {
 		w.log.Error("Received nil order")
+		w.WriteStatusLog("A", "Received nil order")
 		return
 	}
 
@@ -291,6 +312,10 @@ func (w *Watcher) Submit(o *Order) {
 		zap.Int("match_patterns", len(o.Match)),
 		zap.Int("paths", len(o.Paths)),
 		zap.Int("catch_all", len(o.CatchAll)))
+
+	w.WriteStatusLog("A", fmt.Sprintf(
+		"Processing new order - host: %s, match patterns: %d, paths: %d, catch_all: %d",
+		o.Host, len(o.Match), len(o.Paths), len(o.CatchAll)))
 
 	// Process matchers outside the lock to minimize lock time
 	o.matchers = w.processMatchers(o.Match)
@@ -307,6 +332,7 @@ func (w *Watcher) Submit(o *Order) {
 
 	w.Order = o
 	w.log.Info("New substrate ready and processed")
+	w.WriteStatusLog("A", "New substrate ready and processed")
 	clearCache()
 }
 

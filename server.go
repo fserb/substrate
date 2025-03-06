@@ -153,6 +153,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == "GET" && r.URL.Path == "/reset" {
 		s.log.Info("Cache reset requested")
+		// Log directly since there's no watcher for the server
 		err := clearCache()
 		if err != nil {
 			s.log.Error("Error clearing cache", zap.Error(err))
@@ -194,15 +195,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logger.Info("Processing substrate request")
+	watcher.WriteStatusLog("A", "Processing substrate request")
 
 	var order Order
 	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
 		logger.Error("Error unmarshalling order", zap.Error(err))
+		watcher.WriteStatusLog("A", fmt.Sprintf("Error unmarshalling order: %v", err))
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
 
 	logger.Info("Received order", zap.Any("order", order))
+	watcher.WriteStatusLog("A", "Received order from substrate process")
 	watcher.Submit(&order)
 
 	w.WriteHeader(http.StatusOK)

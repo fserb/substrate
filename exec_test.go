@@ -128,63 +128,6 @@ func TestExecCmdStop(t *testing.T) {
 	}
 }
 
-func TestExecGetRedirectFile(t *testing.T) {
-	// Test stdout
-	file, err := getRedirectFile(&outputTarget{Type: "stdout"}, "")
-	if err != nil {
-		t.Errorf("getRedirectFile(stdout) returned error: %v", err)
-	}
-	if file != os.Stdout {
-		t.Error("getRedirectFile(stdout) did not return os.Stdout")
-	}
-
-	// Test stderr
-	file, err = getRedirectFile(&outputTarget{Type: "stderr"}, "")
-	if err != nil {
-		t.Errorf("getRedirectFile(stderr) returned error: %v", err)
-	}
-	if file != os.Stderr {
-		t.Error("getRedirectFile(stderr) did not return os.Stderr")
-	}
-
-	// Test null
-	file, err = getRedirectFile(&outputTarget{Type: "null"}, "")
-	if err != nil {
-		t.Errorf("getRedirectFile(null) returned error: %v", err)
-	}
-	if file != nil {
-		t.Error("getRedirectFile(null) did not return nil")
-	}
-
-	// Test file
-	tmpfile := filepath.Join(os.TempDir(), "test_redirect.log")
-	file, err = getRedirectFile(&outputTarget{Type: "file", File: tmpfile}, "")
-	if err != nil {
-		t.Errorf("getRedirectFile(file) returned error: %v", err)
-	}
-	if file == nil {
-		t.Error("getRedirectFile(file) returned nil")
-	} else {
-		file.Close()
-		os.Remove(tmpfile)
-	}
-
-	// Test invalid
-	_, err = getRedirectFile(&outputTarget{Type: "invalid"}, "")
-	if err == nil {
-		t.Error("getRedirectFile(invalid) did not return error")
-	}
-
-	// Test default type
-	file, err = getRedirectFile(nil, "stdout")
-	if err != nil {
-		t.Errorf("getRedirectFile(nil, stdout) returned error: %v", err)
-	}
-	if file != os.Stdout {
-		t.Error("getRedirectFile(nil, stdout) did not return os.Stdout")
-	}
-}
-
 func TestExecCmdSubmit(t *testing.T) {
 	order := &Order{
 		Match: []string{
@@ -236,4 +179,3 @@ func TestExecCmdSubmit(t *testing.T) {
 		t.Errorf("Expected matchers: %+v, got: %+v", expectedMatchers, order.matchers)
 	}
 }
-
