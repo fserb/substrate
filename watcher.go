@@ -57,13 +57,46 @@ type Watcher struct {
 	suburl  string             // URL for the substrate process to communicate with
 }
 
-func (w *Watcher) init() error {
-	if w.Root == "" {
-		return fmt.Errorf("root directory not specified")
+// updateWatcher configures the watcher based on whether the substrate file exists
+func (w *Watcher) updateWatcher() error {
+	if w.watcher == nil {
+		return fmt.Errorf("watcher not initialized")
 	}
 
-	if !path.IsAbs(w.Root) {
-		return fmt.Errorf("root directory must be an absolute path")
+	substPath := filepath.Join(w.Root, "substrate")
+
+	// Check if substrate file exists
+	fileExists := false
+	if _, err := os.Stat(substPath); err == nil {
+		fileExists = true
+	}
+
+	// Remove any existing watches
+	w.watcher.Remove(w.Root)
+	w.watcher.Remove(substPath)
+
+	if fileExists {
+		// Watch the file directly
+		if err := w.watcher.Add(substPath); err != nil {
+			return fmt.Errorf("failed to watch substrate file: %w", err)
+		}
+		w.log.Debug("Watching substrate file", zap.String("path", substPath))
+		w.startLoading()
+	} else {
+		// Watch the directory to detect creation
+		if err := w.watcher.Add(w.Root); err != nil {
+			return fmt.Errorf("failed to watch directory: %w", err)
+		}
+		w.log.Debug("Watching directory for substrate file", zap.String("dir", w.Root))
+		w.stopCommand()
+	}
+
+	return nil
+}
+
+func (w *Watcher) init() error {
+	if w.Root == "" || !path.IsAbs(w.Root) {
+		return fmt.Errorf("root directory must be an absolute path (%s)", w.Root)
 	}
 
 	if _, err := os.Stat(w.Root); os.IsNotExist(err) {
@@ -76,14 +109,11 @@ func (w *Watcher) init() error {
 	}
 	w.watcher = watcher
 
-	// Watch the root directory
-	if err := watcher.Add(w.Root); err != nil {
+	// Configure the watcher based on substrate file existence
+	if err := w.updateWatcher(); err != nil {
 		watcher.Close()
-		return fmt.Errorf("failed to watch directory: %w", err)
+		return err
 	}
-
-	// Check if substrate file already exists
-	w.startLoading()
 
 	// Start watching for changes
 	ctx, cancel := context.WithCancel(context.Background())
@@ -104,6 +134,8 @@ func (w *Watcher) watch(ctx context.Context) {
 	w.log.Debug("Starting file watcher")
 	defer w.log.Debug("File watcher stopped")
 
+	substPath := filepath.Join(w.Root, "substrate")
+
 	for {
 		select {
 		case event, ok := <-watcher.Events:
@@ -116,13 +148,15 @@ func (w *Watcher) watch(ctx context.Context) {
 				return
 			}
 
-			substPath := filepath.Join(w.Root, "substrate")
 			if event.Name != substPath {
 				continue
 			}
 
-			w.log.Debug("Substrate file event", zap.String("event", event.Op.String()))
-			w.startLoading()
+			w.log.Debug("File event", zap.String("path", event.Name), zap.String("event", event.Op.String()))
+
+			if err := w.updateWatcher(); err != nil {
+				w.log.Error("Failed to update watcher", zap.Error(err))
+			}
 
 		case err, ok := <-watcher.Errors:
 			if !ok {
