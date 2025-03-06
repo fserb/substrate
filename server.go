@@ -164,14 +164,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Method == "GET" && r.URL.Path == "/status" {
-		info := GetDebugInfo(s)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(info)
-		return
-	}
-
 	if r.Method != "POST" {
 		s.log.Warn("Invalid method", zap.String("method", r.Method))
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -216,3 +208,4 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Order submitted successfully"))
 }
+
