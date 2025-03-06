@@ -69,10 +69,9 @@ exit 0
 	}
 
 	cmd := &execCmd{
-		Command:       []string{scriptPath},
-		Dir:           tmpDir,
-		RestartPolicy: "never",
-		log:           zap.NewNop(),
+		Command: []string{scriptPath},
+		Dir:     tmpDir,
+		log:     zap.NewNop(),
 	}
 
 	done := make(chan struct{})
@@ -237,3 +236,4 @@ func TestExecCmdSubmit(t *testing.T) {
 		t.Errorf("Expected matchers: %+v, got: %+v", expectedMatchers, order.matchers)
 	}
 }
+

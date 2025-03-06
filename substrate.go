@@ -54,11 +54,9 @@ type outputTarget struct {
 // App is the main substrate application that manages the substrate server
 // and provides configuration for substrate processes.
 type App struct {
-	Env map[string]string `json:"env,omitempty"`
-	// How processes are restarted: "always", "never", "on_failure"
-	RestartPolicy  string        `json:"restart_policy,omitempty"`
-	RedirectStdout *outputTarget `json:"redirect_stdout,omitempty"`
-	RedirectStderr *outputTarget `json:"redirect_stderr,omitempty"`
+	Env            map[string]string `json:"env,omitempty"`
+	RedirectStdout *outputTarget     `json:"redirect_stdout,omitempty"`
+	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
 
 	log    *zap.Logger
 	mutex  sync.Mutex
@@ -85,15 +83,6 @@ func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) 
 					app.Env = map[string]string{}
 				}
 				app.Env[envKey] = envValue
-			case "restart_policy":
-				var p string
-				if !d.Args(&p) {
-					return nil, d.ArgErr()
-				}
-				if p != "always" && p != "never" && p != "on_failure" {
-					return nil, fmt.Errorf("Invalid restart policy: %s", p)
-				}
-				app.RestartPolicy = p
 			case "redirect_stdout":
 				target, err := parseRedirectGlobal(d)
 				if err != nil {
@@ -205,3 +194,4 @@ func (h *App) GetWatcher(root string) *Watcher {
 	h.server.watchers[key] = watcher
 	return watcher
 }
+

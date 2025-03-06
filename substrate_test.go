@@ -71,7 +71,6 @@ func TestAppEnvironmentPropagation(t *testing.T) {
 	app := &App{
 		log:            zap.NewNop(),
 		Env:            map[string]string{"TEST_KEY": "test_value"},
-		RestartPolicy:  "always",
 		RedirectStdout: &outputTarget{Type: "null"},
 		RedirectStderr: &outputTarget{Type: "null"},
 	}
@@ -97,14 +96,6 @@ func TestAppEnvironmentPropagation(t *testing.T) {
 
 	if cmd.Env["TEST_KEY"] != "test_value" {
 		t.Errorf("Environment variable not properly set, got %v", cmd.Env)
-	}
-
-	if cmd.RestartPolicy == "" {
-		cmd.RestartPolicy = app.RestartPolicy
-	}
-
-	if cmd.RestartPolicy != "always" {
-		t.Errorf("Restart policy not properly set, got %s", cmd.RestartPolicy)
 	}
 
 	// Test with different output targets
@@ -168,3 +159,4 @@ func TestAppCaddyModule(t *testing.T) {
 		t.Errorf("Expected New() to return *App, got %T", module)
 	}
 }
+

@@ -191,10 +191,6 @@ func (w *Watcher) startLoading() {
 		cmd.Env = w.app.Env
 	}
 
-	if cmd.RestartPolicy == "" {
-		cmd.RestartPolicy = w.app.RestartPolicy
-	}
-
 	if cmd.RedirectStdout == nil {
 		cmd.RedirectStdout = w.app.RedirectStdout
 	}
@@ -328,3 +324,4 @@ func (w *Watcher) processMatchers(patterns []string) []orderMatcher {
 
 	return matchers
 }
+

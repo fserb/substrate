@@ -20,8 +20,6 @@ type execCmd struct {
 	Dir            string            `json:"dir,omitempty"`
 	RedirectStdout *outputTarget     `json:"redirect_stdout,omitempty"`
 	RedirectStderr *outputTarget     `json:"redirect_stderr,omitempty"`
-	// how the command is restarted: "always", "never", "on_failure"
-	RestartPolicy string `json:"restart_policy,omitempty"`
 
 	cancel  context.CancelFunc
 	log     *zap.Logger
@@ -132,10 +130,6 @@ cmdLoop:
 				cmdLogger.Error("Command exited with error", zap.Error(err))
 			}
 
-			if s.RestartPolicy == "never" || (s.RestartPolicy == "on_failure" && err == nil) {
-				break cmdLoop
-			}
-
 			if err == nil || duration > resetRestartDelay {
 				delay = minRestartDelay
 			}
@@ -219,3 +213,4 @@ func (s *execCmd) Destruct() error {
 	s.Stop()
 	return nil
 }
+
