@@ -29,10 +29,10 @@ var (
 	_ caddy.Destructor = (*execCmd)(nil)
 )
 
+// newExecCommand creates and configures an exec.Cmd instance.
 func (s *execCmd) newExecCommand() *exec.Cmd {
 	cmd := exec.Command(s.Command[0], s.Command[1:]...)
 	configureSysProcAttr(cmd)
-
 	configureExecutingUser(cmd, s.User)
 
 	env := os.Environ()
@@ -48,10 +48,8 @@ func (s *execCmd) newExecCommand() *exec.Cmd {
 		}
 	}
 	cmd.Env = env
-
 	cmd.Dir = s.Dir
 
-	// Set up pipes for stdout and stderr to capture output
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		if s.log != nil {
@@ -66,7 +64,6 @@ func (s *execCmd) newExecCommand() *exec.Cmd {
 		}
 	}
 
-	// Set up goroutines to capture and log output
 	if s.watcher != nil && s.watcher.app != nil && stdoutPipe != nil {
 		go func() {
 			scanner := bufio.NewScanner(stdoutPipe)
@@ -90,8 +87,11 @@ func (s *execCmd) newExecCommand() *exec.Cmd {
 	return cmd
 }
 
-// Run executes the command with proper restart policy handling
-// It manages the lifecycle of the process according to the configured restart policy
+// Run executes the command with automatic restart capabilities.
+// It implements an exponential backoff strategy for restarts and
+// handles graceful termination of processes. The function continuously
+// monitors the command's execution, restarting it when it exits and
+// managing the restart delay based on execution duration.
 func (s *execCmd) Run() {
 	if s.cancel != nil {
 		return
@@ -106,7 +106,6 @@ func (s *execCmd) Run() {
 		return
 	}
 
-	// Log status if watcher is available
 	if s.watcher != nil && s.watcher.app != nil {
 		s.watcher.WriteStatusLog("A", "Starting command")
 	}
@@ -145,7 +144,6 @@ cmdLoop:
 
 		cancelctx, cancel := context.WithCancel(outerctx)
 
-		// Wait for command completion or cancellation
 		select {
 		case err := <-errCh:
 			cancel()

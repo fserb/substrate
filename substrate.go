@@ -27,7 +27,6 @@ func init() {
 	caddy.RegisterModule(App{})
 	httpcaddyfile.RegisterGlobalOption("substrate", parseGlobalSubstrate)
 
-	// set up salt
 	bi, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
 	if err != nil {
 		log.Fatalln(err)
@@ -62,6 +61,7 @@ type App struct {
 	statusLogFD *os.File
 }
 
+// parseGlobalSubstrate parses the global substrate configuration from the Caddyfile.
 func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) {
 	app := &App{StatusLog: outputTarget{Type: "stdout"}}
 
@@ -98,6 +98,8 @@ func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) 
 	}, nil
 }
 
+// parseRedirectGlobal parses the status_log directive configuration.
+// It supports "stdout", "stderr", "null", and "file" output targets.
 func parseRedirectGlobal(d *caddyfile.Dispenser) (*outputTarget, error) {
 	if !d.NextArg() {
 		return nil, d.ArgErr()
@@ -127,6 +129,7 @@ func (h App) CaddyModule() caddy.ModuleInfo {
 	}
 }
 
+// Provision sets up the app.
 func (h *App) Provision(ctx caddy.Context) error {
 	if h.log == nil {
 		h.log = ctx.Logger(h)
@@ -138,7 +141,6 @@ func (h *App) Provision(ctx caddy.Context) error {
 func (h *App) Start() error {
 	h.log.Info("Starting substrate")
 
-	// Initialize status log if configured
 	if err := h.initStatusLog(); err != nil {
 		h.log.Error("Failed to initialize status log", zap.Error(err))
 	}
@@ -148,25 +150,22 @@ func (h *App) Start() error {
 	return nil
 }
 
-// initStatusLog initializes the status log based on the configured target
+// initStatusLog initializes the status log based on the configured target.
 func (h *App) initStatusLog() error {
 	switch h.StatusLog.Type {
 	case "stdout", "stderr", "null":
-		// These don't need initialization
 		return nil
 	case "file":
 		if h.StatusLog.File == "" {
 			return fmt.Errorf("status_log file path is empty")
 		}
 
-		// Create or open the log file
 		f, err := os.OpenFile(h.StatusLog.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
 			return fmt.Errorf("failed to open status log file: %w", err)
 		}
 		h.statusLogFD = f
 
-		// Write a header to the log
 		timestamp := time.Now().Format(time.RFC3339)
 		fmt.Fprintf(f, "=== Substrate Status Log Started at %s ===\n", timestamp)
 		return nil
@@ -175,10 +174,10 @@ func (h *App) initStatusLog() error {
 	}
 }
 
+// Stop gracefully shuts down the substrate app.
 func (h *App) Stop() error {
 	h.log.Info("Stopping substrate")
 
-	// Close status log file if open
 	if h.statusLogFD != nil {
 		timestamp := time.Now().Format(time.RFC3339)
 		fmt.Fprintf(h.statusLogFD, "=== Substrate Status Log Stopped at %s ===\n", timestamp)
@@ -193,6 +192,8 @@ func (h *App) Stop() error {
 	return nil
 }
 
+// GetWatcher retrieves an existing watcher for the given root directory
+// or creates a new one if it doesn't exist.
 func (h *App) GetWatcher(root string) *Watcher {
 	hash := sha1.Sum(append(salt, []byte(root)...))
 	key := hex.EncodeToString(hash[:])

@@ -72,8 +72,5 @@ func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 	r.Header.Set("X-Forwarded-BaseURL", fmt.Sprintf("%s://%s", scheme, r.Host))
 
 	return s.proxy.ServeHTTP(w, r, next)
-
-	// r.URL.Path = origPath
-	// return next.ServeHTTP(w, r)
 }
 

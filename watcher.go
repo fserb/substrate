@@ -29,7 +29,9 @@ type Watcher struct {
 	app     *App               // Reference to the parent App
 }
 
-// updateWatcher configures the watcher based on whether the substrate file exists
+// updateWatcher configures the watcher based on whether the substrate file exists.
+// It sets up appropriate watches on either the file or directory and triggers
+// command loading or stopping as needed.
 func (w *Watcher) updateWatcher() error {
 	if w.watcher == nil {
 		return fmt.Errorf("watcher not initialized")
@@ -37,25 +39,21 @@ func (w *Watcher) updateWatcher() error {
 
 	substPath := filepath.Join(w.Root, "substrate")
 
-	// Check if substrate file exists
 	fileExists := false
 	if _, err := os.Stat(substPath); err == nil {
 		fileExists = true
 	}
 
-	// Remove any existing watches
 	w.watcher.Remove(w.Root)
 	w.watcher.Remove(substPath)
 
 	if fileExists {
-		// Watch the file directly
 		if err := w.watcher.Add(substPath); err != nil {
 			return fmt.Errorf("failed to watch substrate file: %w", err)
 		}
 		w.log.Debug("Watching substrate file", zap.String("path", substPath))
 		w.startLoading()
 	} else {
-		// Watch the directory to detect creation
 		if err := w.watcher.Add(w.Root); err != nil {
 			return fmt.Errorf("failed to watch directory: %w", err)
 		}
@@ -66,6 +64,8 @@ func (w *Watcher) updateWatcher() error {
 	return nil
 }
 
+// init initializes the watcher by validating the root directory,
+// creating a file system watcher, and starting the watch goroutine.
 func (w *Watcher) init() error {
 	if w.Root == "" || !path.IsAbs(w.Root) {
 		return fmt.Errorf("root directory must be an absolute path (%s)", w.Root)
@@ -81,13 +81,11 @@ func (w *Watcher) init() error {
 	}
 	w.watcher = watcher
 
-	// Configure the watcher based on substrate file existence
 	if err := w.updateWatcher(); err != nil {
 		watcher.Close()
 		return err
 	}
 
-	// Start watching for changes
 	ctx, cancel := context.WithCancel(context.Background())
 	w.cancel = cancel
 	go w.watch(ctx)
@@ -95,7 +93,9 @@ func (w *Watcher) init() error {
 	return nil
 }
 
-// watch monitors the substrate file for changes
+// watch monitors the substrate file for changes in a separate goroutine.
+// It responds to file system events and errors, updating the watcher state
+// accordingly.
 func (w *Watcher) watch(ctx context.Context) {
 	watcher := w.watcher
 
@@ -135,7 +135,6 @@ func (w *Watcher) watch(ctx context.Context) {
 				w.log.Debug("Watcher errors channel closed")
 				return
 			}
-			// Guard against nil logger
 			if w.log != nil {
 				w.log.Error("Watcher error", zap.Error(err))
 			}
@@ -160,6 +159,8 @@ func (w *Watcher) stopCommand() {
 	}
 }
 
+// GetFreePort finds an available TCP port by binding to port 0
+// and retrieving the assigned port number.
 func GetFreePort() (int, error) {
 	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
 	if err != nil {
@@ -174,6 +175,9 @@ func GetFreePort() (int, error) {
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
+// startLoading creates and starts a new substrate process.
+// It allocates a free port, configures the command with appropriate
+// environment and user settings, and launches it in a separate goroutine.
 func (w *Watcher) startLoading() {
 	substFile := filepath.Join(w.Root, "substrate")
 	if _, err := os.Stat(substFile); err != nil {
@@ -202,7 +206,6 @@ func (w *Watcher) startLoading() {
 		log:     w.log,
 	}
 
-	// If we're root, change to the file owner
 	if os.Geteuid() == 0 {
 		fileInfo, err := os.Stat(cmd.Command[0])
 		if err == nil {
@@ -218,7 +221,6 @@ func (w *Watcher) startLoading() {
 		}
 	}
 
-	// Apply global configuration from app
 	if w.app.Env != nil && (cmd.Env == nil || len(cmd.Env) == 0) {
 		cmd.Env = w.app.Env
 	}
@@ -228,7 +230,6 @@ func (w *Watcher) startLoading() {
 	go w.cmd.Run()
 }
 
-// Close stops watching and cleans up resources
 func (w *Watcher) Close() {
 	if w.cancel != nil {
 		w.cancel()
@@ -241,13 +242,8 @@ func (w *Watcher) Close() {
 	w.stopCommand()
 }
 
-// GetCmd returns the current command
-func (w *Watcher) GetCmd() *execCmd {
-	return w.cmd
-}
-
-// WriteStatusLog writes a message to the status log with the given message type:
-// "S" for stdout, "E" for stderr, or "A" for status/app messages
+// WriteStatusLog writes a message to the status log
+// The output destination is determined by the app's StatusLog configuration.
 func (w *Watcher) WriteStatusLog(msgType, message string) {
 	if w.app == nil {
 		return

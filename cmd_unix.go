@@ -9,6 +9,8 @@ import (
 	"syscall"
 )
 
+// configureSysProcAttr sets up process group attributes to ensure
+// proper process management and signal handling on Unix systems.
 func configureSysProcAttr(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
@@ -16,6 +18,9 @@ func configureSysProcAttr(cmd *exec.Cmd) {
 	}
 }
 
+// configureExecutingUser changes the user context for command execution
+// when the specified username differs from the current user.
+// This allows commands to run with the permissions of a different user.
 func configureExecutingUser(cmd *exec.Cmd, username string) {
 	if username != "" {
 		currentUser, _ := user.Current()

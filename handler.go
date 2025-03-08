@@ -37,7 +37,6 @@ var (
 type HostReverseProxy interface {
 	caddyhttp.MiddlewareHandler
 	caddy.Provisioner
-
 	SetHost(string)
 }
 
@@ -47,7 +46,9 @@ func (s *ReverseProxy) SetHost(host string) {
 	s.Upstreams[0].Dial = host
 }
 
-// SubstrateHandler handles requests by proxying to a substrate process
+// SubstrateHandler handles requests by proxying to a substrate process.
+// It manages the lifecycle of substrate processes and routes HTTP requests
+// to the appropriate backend based on path matching.
 type SubstrateHandler struct {
 	Prefix string `json:"prefix,omitempty"`
 
@@ -65,6 +66,7 @@ func (s SubstrateHandler) CaddyModule() caddy.ModuleInfo {
 	}
 }
 
+// Provision sets up the handler
 func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 	s.log = ctx.Logger(s)
 
@@ -101,6 +103,7 @@ func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 	return nil
 }
 
+// parseSubstrateDirective parses the substrate directive in the Caddyfile.
 func parseSubstrateDirective(h httpcaddyfile.Helper) ([]httpcaddyfile.ConfigValue, error) {
 	if !h.Next() {
 		return nil, h.ArgErr()
