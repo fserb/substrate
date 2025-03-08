@@ -10,17 +10,6 @@ import (
 	"go.uber.org/zap"
 )
 
-type mockApp struct {
-	getWatcherFunc func(string) *Watcher
-}
-
-func (m *mockApp) GetWatcher(root string) *Watcher {
-	if m.getWatcherFunc != nil {
-		return m.getWatcherFunc(root)
-	}
-	return nil
-}
-
 func TestSubstrateHandlerServeHTTP(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -111,19 +100,12 @@ func TestSubstrateHandlerServeHTTP(t *testing.T) {
 				return nil
 			})
 
-			// Setup mock app
-			mockAppImpl := &mockApp{
-				getWatcherFunc: func(string) *Watcher {
-					return nil
-				},
-			}
-
 			// Setup handler
 			handler := &SubstrateHandler{
 				Prefix: tt.prefix,
 				log:    zap.NewNop(),
 				proxy:  mockProxy,
-				app:    mockAppImpl,
+				app:    &App{log: zap.NewNop()},
 			}
 
 			// Setup watcher if needed
@@ -184,24 +166,14 @@ func TestSubstrateHandlerNoWatcher(t *testing.T) {
 		Prefix: "/app",
 		log:    zap.NewNop(),
 		proxy:  &mockReverseProxy{},
+		app:    &App{log: zap.NewNop()},
 	}
 
-	// Create a mock app that returns nil for GetWatcher
-	mockAppImpl := &mockApp{
-		getWatcherFunc: func(string) *Watcher {
-			return nil
-		},
-	}
-
-	handler.app = mockAppImpl
-
-	// Create request
 	req := httptest.NewRequest("GET", "/app/index.html", nil)
 	req = req.WithContext(context.WithValue(req.Context(), caddyhttp.VarsCtxKey, map[string]any{
 		"root": ".",
 	}))
 
-	// Create response recorder
 	w := httptest.NewRecorder()
 
 	// Call handler
@@ -229,7 +201,7 @@ func TestSubstrateHandlerHeaders(t *testing.T) {
 		Prefix: "/app",
 		log:    zap.NewNop(),
 		proxy:  mockProxy,
-		app:    &mockApp{},
+		app:    &App{log: zap.NewNop()},
 	}
 
 	// Setup watcher

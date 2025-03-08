@@ -34,11 +34,6 @@ var (
 	_ caddyhttp.MiddlewareHandler = (*SubstrateHandler)(nil)
 )
 
-// AppInterface defines the interface needed for the substrate handler
-type AppInterface interface {
-	GetWatcher(root string) *Watcher
-}
-
 type HostReverseProxy interface {
 	caddyhttp.MiddlewareHandler
 	caddy.Provisioner
@@ -57,7 +52,7 @@ type SubstrateHandler struct {
 	Prefix string `json:"prefix,omitempty"`
 
 	log     *zap.Logger
-	app     AppInterface
+	app     *App
 	fs      fs.FS
 	proxy   HostReverseProxy
 	watcher *Watcher
