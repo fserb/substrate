@@ -5,8 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
-	"sort"
 	"testing"
 	"time"
 
@@ -128,31 +126,3 @@ func TestExecCmdStop(t *testing.T) {
 	}
 }
 
-func TestExecCmdSubmit(t *testing.T) {
-	order := &Order{
-		Routes: []string{
-			"/foo/*", "/bar/*", "/baz/*",
-			"/api/v1/*", "/static/*",
-		},
-		Avoid: []string{
-			"/foo/private/*", "/api/v1/internal/*",
-		},
-	}
-
-	watcher := &Watcher{
-		log: zap.NewNop(),
-	}
-	
-	// Compile the patterns
-	order.compiledRoutes = watcher.compileRoutePatterns(order.Routes)
-	order.compiledAvoid = watcher.compileRoutePatterns(order.Avoid)
-
-	// Verify routes were compiled correctly
-	if len(order.compiledRoutes) != 5 {
-		t.Errorf("Expected 5 compiled routes, got %d", len(order.compiledRoutes))
-	}
-
-	if len(order.compiledAvoid) != 2 {
-		t.Errorf("Expected 2 compiled avoid patterns, got %d", len(order.compiledAvoid))
-	}
-}

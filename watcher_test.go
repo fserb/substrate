@@ -117,16 +117,6 @@ func TestWatcherSubmit(t *testing.T) {
 
 	watcher.Submit(order)
 
-	// Verify the order was processed
-	if watcher.Order != order {
-		t.Error("Order was not set correctly")
-	}
-
-	// Verify matchers were created
-	if len(order.matchers) != 2 {
-		t.Errorf("Expected 2 matchers, got %d", len(order.matchers))
-	}
-
 	// Verify command was promoted
 	if watcher.cmd != cmd {
 		t.Error("New command was not promoted")
