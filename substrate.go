@@ -1,13 +1,7 @@
 package substrate
 
 import (
-	"crypto/rand"
-	"crypto/sha1"
-	"encoding/hex"
 	"fmt"
-	"log"
-	"math"
-	"math/big"
 	"os"
 	"sync"
 	"time"
@@ -19,19 +13,9 @@ import (
 	"go.uber.org/zap"
 )
 
-var (
-	salt []byte
-)
-
 func init() {
 	caddy.RegisterModule(App{})
 	httpcaddyfile.RegisterGlobalOption("substrate", parseGlobalSubstrate)
-
-	bi, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
-	if err != nil {
-		log.Fatalln(err)
-	}
-	salt = []byte(hex.EncodeToString(bi.Bytes()) + ":")
 }
 
 // Interface guards
@@ -195,10 +179,7 @@ func (h *App) Stop() error {
 // GetWatcher retrieves an existing watcher for the given root directory
 // or creates a new one if it doesn't exist.
 func (h *App) GetWatcher(root string) *Watcher {
-	hash := sha1.Sum(append(salt, []byte(root)...))
-	key := hex.EncodeToString(hash[:])
-
-	got, ok := h.watchers[key]
+	got, ok := h.watchers[root]
 	if ok {
 		return got
 	}
@@ -214,7 +195,6 @@ func (h *App) GetWatcher(root string) *Watcher {
 		return nil
 	}
 
-	h.watchers[key] = watcher
+	h.watchers[root] = watcher
 	return watcher
 }
-

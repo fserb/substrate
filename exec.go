@@ -239,4 +239,3 @@ func (s *execCmd) Destruct() error {
 	s.Stop()
 	return nil
 }
-

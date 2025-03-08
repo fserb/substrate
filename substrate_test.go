@@ -112,4 +112,3 @@ func TestAppCaddyModule(t *testing.T) {
 		t.Errorf("Expected New() to return *App, got %T", module)
 	}
 }
-

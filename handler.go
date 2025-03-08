@@ -66,7 +66,7 @@ func (s SubstrateHandler) CaddyModule() caddy.ModuleInfo {
 	}
 }
 
-// Provision sets up the handler
+// Provision sets up the handler.
 func (s *SubstrateHandler) Provision(ctx caddy.Context) error {
 	s.log = ctx.Logger(s)
 
@@ -120,4 +120,3 @@ func parseSubstrateDirective(h httpcaddyfile.Helper) ([]httpcaddyfile.ConfigValu
 
 	return h.NewRoute(caddy.ModuleMap{}, &SubstrateHandler{Prefix: prefix}), nil
 }
-

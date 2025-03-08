@@ -237,4 +237,3 @@ func TestSubstrateHandlerHeaders(t *testing.T) {
 			req.Header.Get("X-Forwarded-BaseURL"))
 	}
 }
-

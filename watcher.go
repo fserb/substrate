@@ -265,4 +265,3 @@ func (w *Watcher) WriteStatusLog(msgType, message string) {
 		// Do nothing
 	}
 }
-
