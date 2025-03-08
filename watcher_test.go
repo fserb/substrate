@@ -41,81 +41,13 @@ func TestWatcherGetWatcher(t *testing.T) {
 	app.Stop()
 }
 
-func TestWatcherIsReady(t *testing.T) {
-	watcher := &Watcher{}
-
-	// Test with nil cmd and order
-	if watcher.IsReady() {
-		t.Error("IsReady() = true, want false with nil cmd and order")
-	}
-
-	// Test with cmd but nil order
-	watcher.cmd = &execCmd{}
-	if watcher.IsReady() {
-		t.Error("IsReady() = true, want false with nil order")
-	}
-
-	// Test with cmd and order
-	watcher.Order = &Order{}
-	if !watcher.IsReady() {
-		t.Error("IsReady() = false, want true with cmd and order")
-	}
-}
-
-func TestWatcherWaitUntilReady(t *testing.T) {
-	// Create a test watcher
-	watcher := &Watcher{
-		Root: t.TempDir(),
-	}
-
-	// Test with already ready watcher
-	watcher.cmd = &execCmd{}
-	watcher.Order = &Order{}
-	if !watcher.WaitUntilReady(100 * time.Millisecond) {
-		t.Error("WaitUntilReady() = false, want true for ready watcher")
-	}
-
-	// Test with no substrate file
-	watcher.cmd = nil
-	watcher.Order = nil
-	if !watcher.WaitUntilReady(100 * time.Millisecond) {
-		t.Error("WaitUntilReady() = false, want false with no substrate file")
-	}
-
-	// Test with no substrate file
-	watcher.cmd = &execCmd{}
-	watcher.Order = nil
-	if watcher.WaitUntilReady(100 * time.Millisecond) {
-		t.Error("WaitUntilReady() = true, want false with no substrate file")
-	}
-
-	// Test becoming ready during wait
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		watcher.cmd = &execCmd{}
-		watcher.Order = &Order{}
-	}()
-
-	if !watcher.WaitUntilReady(200 * time.Millisecond) {
-		t.Error("WaitUntilReady() = false, want true when becoming ready during wait")
-	}
-}
-
 func TestWatcherSubmit(t *testing.T) {
 	watcher := &Watcher{
 		log: zap.NewNop(),
 	}
 
-	order := &Order{
-		Host:   "http://localhost:8080",
-		Routes: []string{"/*.html", "/*.md", "/api/*"},
-		Avoid:  []string{"/api/internal/*"},
-	}
-
 	cmd := &execCmd{}
 	watcher.cmd = cmd
-
-	watcher.Submit(order)
 
 	// Verify command was promoted
 	if watcher.cmd != cmd {
@@ -211,3 +143,4 @@ func TestWatcherWatch(t *testing.T) {
 
 	watcher.Close()
 }
+

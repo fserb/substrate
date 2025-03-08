@@ -21,13 +21,6 @@ func (m *mockApp) GetWatcher(root string) *Watcher {
 	return nil
 }
 
-// Order is a struct that represents the configuration for a substrate process
-type Order struct {
-	Host   string   `json:"host,omitempty"`
-	Routes []string `json:"routes,omitempty"`
-	Avoid  []string `json:"avoid,omitempty"`
-}
-
 func TestSubstrateHandlerServeHTTP(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -138,7 +131,6 @@ func TestSubstrateHandlerServeHTTP(t *testing.T) {
 				watcher := &Watcher{
 					Port: tt.port,
 					log:  zap.NewNop(),
-					Order: &Order{},
 				}
 				if tt.cmdExists {
 					watcher.cmd = &execCmd{
@@ -244,7 +236,6 @@ func TestSubstrateHandlerHeaders(t *testing.T) {
 	handler.watcher = &Watcher{
 		Port: 8080,
 		log:  zap.NewNop(),
-		Order: &Order{},
 		cmd: &execCmd{
 			log: zap.NewNop(),
 		},

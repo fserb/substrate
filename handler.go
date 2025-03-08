@@ -34,6 +34,11 @@ var (
 	_ caddyhttp.MiddlewareHandler = (*SubstrateHandler)(nil)
 )
 
+// AppInterface defines the interface needed for the substrate handler
+type AppInterface interface {
+	GetWatcher(root string) *Watcher
+}
+
 type HostReverseProxy interface {
 	caddyhttp.MiddlewareHandler
 	caddy.Provisioner
@@ -52,7 +57,7 @@ type SubstrateHandler struct {
 	Prefix string `json:"prefix,omitempty"`
 
 	log     *zap.Logger
-	app     *App
+	app     AppInterface
 	fs      fs.FS
 	proxy   HostReverseProxy
 	watcher *Watcher
@@ -118,3 +123,4 @@ func parseSubstrateDirective(h httpcaddyfile.Helper) ([]httpcaddyfile.ConfigValu
 	fmt.Println("SUBSTRATE ROUTE: ", prefix)
 	return h.NewRoute(caddy.ModuleMap{}, &SubstrateHandler{Prefix: prefix}), nil
 }
+

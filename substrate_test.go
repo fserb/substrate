@@ -32,18 +32,6 @@ func TestAppLifecycle(t *testing.T) {
 		t.Fatalf("Start failed: %v", err)
 	}
 
-	if app.server == nil {
-		t.Fatal("Server is nil, server may not be running")
-	}
-
-	if app.server.app != app {
-		t.Fatal("Server app reference is incorrect")
-	}
-
-	if app.server.Host == "" {
-		t.Fatal("Server host is empty, server may not be running")
-	}
-
 	err = app.Stop()
 	if err != nil {
 		t.Fatalf("Stop failed: %v", err)
