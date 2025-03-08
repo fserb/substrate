@@ -130,52 +130,29 @@ func TestExecCmdStop(t *testing.T) {
 
 func TestExecCmdSubmit(t *testing.T) {
 	order := &Order{
-		Match: []string{
-			"/foo/*.txt", "/foo/*.md", "/bar/*.log", "/baz/*.json",
-			"*.js", "/*.gif",
-			".gif", "/a", "", "/",
+		Routes: []string{
+			"/foo/*", "/bar/*", "/baz/*",
+			"/api/v1/*", "/static/*",
+		},
+		Avoid: []string{
+			"/foo/private/*", "/api/v1/internal/*",
 		},
 	}
 
-	order.matchers = make([]orderMatcher, 0, len(order.Match))
-	for _, m := range order.Match {
-		dir := filepath.Join("/", filepath.Dir(m))
-		name := filepath.Base(m)
-		if name[0] != '*' || name[1] != '.' {
-			continue
-		}
-		ext := name[1:]
-		if dir[len(dir)-1] != '/' {
-			dir += "/"
-		}
+	watcher := &Watcher{
+		log: zap.NewNop(),
+	}
+	
+	// Compile the patterns
+	order.compiledRoutes = watcher.compileRoutePatterns(order.Routes)
+	order.compiledAvoid = watcher.compileRoutePatterns(order.Avoid)
 
-		order.matchers = append(order.matchers, orderMatcher{dir, ext})
+	// Verify routes were compiled correctly
+	if len(order.compiledRoutes) != 5 {
+		t.Errorf("Expected 5 compiled routes, got %d", len(order.compiledRoutes))
 	}
 
-	sort.Slice(order.matchers, func(i, j int) bool {
-		if len(order.matchers[i].path) != len(order.matchers[j].path) {
-			return len(order.matchers[i].path) > len(order.matchers[j].path)
-		}
-		if order.matchers[i].path != order.matchers[j].path {
-			return order.matchers[i].path < order.matchers[j].path
-		}
-
-		if len(order.matchers[i].ext) != len(order.matchers[j].ext) {
-			return len(order.matchers[i].ext) > len(order.matchers[j].ext)
-		}
-		return order.matchers[i].ext < order.matchers[j].ext
-	})
-
-	expectedMatchers := []orderMatcher{
-		{"/bar/", ".log"},
-		{"/baz/", ".json"},
-		{"/foo/", ".txt"},
-		{"/foo/", ".md"},
-		{"/", ".gif"},
-		{"/", ".js"},
-	}
-
-	if !reflect.DeepEqual(order.matchers, expectedMatchers) {
-		t.Errorf("Expected matchers: %+v, got: %+v", expectedMatchers, order.matchers)
+	if len(order.compiledAvoid) != 2 {
+		t.Errorf("Expected 2 compiled avoid patterns, got %d", len(order.compiledAvoid))
 	}
 }

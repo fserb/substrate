@@ -7,7 +7,7 @@ import (
 	"os/user"
 	"path"
 	"path/filepath"
-	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,30 +15,25 @@ import (
 	"go.uber.org/zap"
 )
 
-// orderMatcher helps match file extensions to paths
-type orderMatcher struct {
-	path string // Directory path to match
-	ext  string // File extension to match (including the dot)
-}
-
 // Order represents a command from a substrate process
 type Order struct {
 	// Host is the upstream server to proxy requests to
 	Host string `json:"host,omitempty"`
 
-	// Match contains patterns for matching files by extension
-	// Format: "/path/*.ext" where path is a directory and ext is a file extension
-	Match []string `json:"match,omitempty"`
+	// Routes contains patterns for matching paths
+	// Format: "/path/*" where * matches anything including /
+	Routes []string `json:"routes,omitempty"`
 
-	// Paths contains exact paths that should be proxied to the upstream
-	Paths []string `json:"paths,omitempty"`
+	// Avoid contains patterns for paths to avoid matching
+	// These take precedence over Routes
+	Avoid []string `json:"avoid,omitempty"`
 
-	// CatchAll contains fallback paths to use when no other match is found for a path
-	CatchAll []string `json:"catch_all,omitempty"`
-
-	// matchers contains compiled matchers from the Match patterns
-	matchers []orderMatcher `json:"-"`
+	// compiled patterns for efficient matching
+	compiledRoutes []routePattern `json:"-"`
+	compiledAvoid  []routePattern `json:"-"`
 }
+
+type routePattern []string
 
 // Watcher watches for a substrate file in a root directory and manages
 // the lifecycle of substrate processes.
@@ -309,25 +304,21 @@ func (w *Watcher) Submit(o *Order) {
 
 	w.log.Info("Processing new order",
 		zap.String("host", o.Host),
-		zap.Int("match_patterns", len(o.Match)),
-		zap.Int("paths", len(o.Paths)),
-		zap.Int("catch_all", len(o.CatchAll)))
+		zap.Int("routes", len(o.Routes)),
+		zap.Int("avoid", len(o.Avoid)))
 
 	w.WriteStatusLog("A", fmt.Sprintf(
-		"Processing new order - host: %s, match patterns: %d, paths: %d, catch_all: %d",
-		o.Host, len(o.Match), len(o.Paths), len(o.CatchAll)))
+		"Processing new order - host: %s, routes: %d, avoid: %d",
+		o.Host, len(o.Routes), len(o.Avoid)))
 
-	// Process matchers outside the lock to minimize lock time
-	o.matchers = w.processMatchers(o.Match)
-
-	// Sort catch-all patterns by length (longest first) then alphabetically
-	if len(o.CatchAll) > 0 {
-		sort.Slice(o.CatchAll, func(i, j int) bool {
-			if len(o.CatchAll[i]) != len(o.CatchAll[j]) {
-				return len(o.CatchAll[i]) > len(o.CatchAll[j])
-			}
-			return o.CatchAll[i] < o.CatchAll[j]
-		})
+	// Compile route patterns
+	o.compiledRoutes = make([]*routePattern, len(o.Routes))
+	for i, p := range o.Routes {
+		o.compiledRoutes[i] = w.compileRoutePattern(p)
+	}
+	o.compiledAvoid = make([]*routePattern, len(o.Avoid))
+	for i, p := range o.Avoid {
+		o.compiledAvoid[i] = w.compileRoutePattern(p)
 	}
 
 	w.Order = o
@@ -336,52 +327,32 @@ func (w *Watcher) Submit(o *Order) {
 	clearCache()
 }
 
-// processMatchers processes match patterns and returns sorted matchers
-func (w *Watcher) processMatchers(patterns []string) []orderMatcher {
-	if len(patterns) == 0 {
-		w.log.Info("No match patterns to process")
+func (w *Watcher) compileRoutePattern(pattern string) routePattern {
+	if pattern == "" {
 		return nil
 	}
 
-	matchers := make([]orderMatcher, 0, len(patterns))
-
-	for _, m := range patterns {
-		dir := filepath.Join("/", filepath.Dir(m))
-		name := filepath.Base(m)
-
-		// Skip invalid patterns
-		if len(name) < 2 || name[0] != '*' || name[1] != '.' {
-			w.log.Warn("Skipping invalid match pattern", zap.String("pattern", m))
-			continue
-		}
-
-		ext := name[1:]
-		if dir[len(dir)-1] != '/' {
-			dir += "/"
-		}
-
-		matchers = append(matchers, orderMatcher{dir, ext})
+	// Ensure pattern starts with /
+	if !strings.HasPrefix(pattern, "/") {
+		pattern = "/" + pattern
 	}
 
-	// Sort matchers by:
-	// 1. Path length (longest first for most specific match)
-	// 2. Path name (alphabetically)
-	// 3. Extension length (longest first)
-	// 4. Extension name (alphabetically)
-	sort.Slice(matchers, func(i, j int) bool {
-		if len(matchers[i].path) != len(matchers[j].path) {
-			return len(matchers[i].path) > len(matchers[j].path)
-		}
-		if matchers[i].path != matchers[j].path {
-			return matchers[i].path < matchers[j].path
-		}
+	parts := make(routePattern, 0)
 
-		if len(matchers[i].ext) != len(matchers[j].ext) {
-			return len(matchers[i].ext) > len(matchers[j].ext)
+	start := 0
+	for i := 0; i < len(pattern); i++ {
+		if pattern[i] == '*' || pattern[i] == '?' {
+			if start < i {
+				parts = append(parts, pattern[start:i])
+			}
+			parts = append(parts, string(pattern[i]))
+			start = i + 1
 		}
-		return matchers[i].ext < matchers[j].ext
-	})
+	}
+	if start < len(pattern) {
+		parts = append(parts, pattern[start:])
+	}
 
-	return matchers
+	return parts
 }
 

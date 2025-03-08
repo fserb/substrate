@@ -239,8 +239,9 @@ func TestServerSubmitOrder(t *testing.T) {
 	}
 
 	order := Order{
-		Host:  "http://localhost:8080",
-		Paths: []string{"/api"},
+		Host:   "http://localhost:8080",
+		Routes: []string{"/api/*"},
+		Avoid:  []string{"/api/internal/*"},
 	}
 
 	orderJSON, _ := json.Marshal(order)
@@ -262,7 +263,11 @@ func TestServerSubmitOrder(t *testing.T) {
 		t.Errorf("Expected host %q, got %q", "http://localhost:8080", watcher.Order.Host)
 	}
 
-	if len(watcher.Order.Paths) != 1 || watcher.Order.Paths[0] != "/api" {
-		t.Errorf("Expected paths [/api], got %v", watcher.Order.Paths)
+	if len(watcher.Order.Routes) != 1 || watcher.Order.Routes[0] != "/api/*" {
+		t.Errorf("Expected routes [/api/*], got %v", watcher.Order.Routes)
+	}
+	
+	if len(watcher.Order.Avoid) != 1 || watcher.Order.Avoid[0] != "/api/internal/*" {
+		t.Errorf("Expected avoid [/api/internal/*], got %v", watcher.Order.Avoid)
 	}
 }

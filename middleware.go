@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
-	"path"
 	"strings"
 	"time"
 
@@ -31,83 +30,89 @@ func (s *SubstrateHandler) fileExists(path string) bool {
 	return !info.IsDir()
 }
 
-func (s *SubstrateHandler) findBestResource(r *http.Request, watcher *Watcher) *string {
-	if watcher == nil || watcher.Order == nil {
-		return nil
+func (s *SubstrateHandler) matchPattern(path string, pattern routePattern) *string {
+	if len(pattern) == 0 {
+		return &path
 	}
-
-	root := s.watcher.Root
-
-	reqPath := caddyhttp.CleanPath(r.URL.Path, true)
-
-	if watcher.Order.matchers != nil {
-		for _, m := range watcher.Order.matchers {
-			if !strings.HasPrefix(reqPath, m.path) {
-				continue
+	match := path
+	for i, p := range pattern {
+		if p == "*" {
+			if i == len(pattern)-1 {
+				return &path
 			}
-
-			bigPath := caddyhttp.CleanPath(reqPath+"/index"+m.ext, true)
-			if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
-				return &bigPath
-			}
-		}
-
-		for _, m := range watcher.Order.matchers {
-			if !strings.HasPrefix(reqPath, m.path) {
-				continue
-			}
-			bigPath := reqPath
-			if !strings.HasSuffix(bigPath, m.ext) {
-				bigPath += m.ext
-			}
-			if s.fileExists(caddyhttp.SanitizedPathJoin(root, bigPath)) {
-				return &bigPath
-			}
-		}
-	}
-
-	if watcher.Order.CatchAll != nil && len(watcher.Order.CatchAll) > 0 {
-		for _, ca := range watcher.Order.CatchAll {
-			cad := path.Dir(ca)
-			if !strings.HasPrefix(reqPath, cad) {
-				continue
-			}
-			candidate := caddyhttp.SanitizedPathJoin(root, ca)
-			if s.fileExists(candidate) {
-				result := ca
-				if !strings.HasPrefix(result, "/") {
-					result = "/" + result
+			next := pattern[i+1]
+			for {
+				idx := strings.Index(match, next)
+				if idx == -1 {
+					return nil
 				}
-				return &result
+				out := s.matchPattern(match[idx+len(next):], pattern[i+2:])
+				if out != nil {
+					return out
+				}
+				match = match[idx:]
 			}
+
+		} else if p == "?" {
+			next := ""
+			if i != len(pattern)-1 {
+				next = pattern[i+1]
+			}
+
+			// pattern: /a/?.md
+
+		} else {
+			if !strings.HasPrefix(match, p) {
+				return nil
+			}
+			match = match[len(p):]
 		}
 	}
-
-	return nil
 }
 
-func (s *SubstrateHandler) matchPath(r *http.Request, watcher *Watcher) bool {
-	if watcher == nil || watcher.Order == nil {
-		return false
+// matchRoute checks if a path matches any route pattern
+// Returns true if the path matches, and the potentially modified path for file matching
+func (s *SubstrateHandler) matchRoute(path string, watcher *Watcher) (bool, string) {
+	// If no routes specified, match everything
+	if len(watcher.Order.Routes) == 0 {
+		// But still check avoid patterns
+		if s.isPathAvoided(path, watcher) {
+			return false, path
+		}
+		return true, path
 	}
 
-	if watcher.Order.Paths == nil {
-		return false
-	}
+	// Check if path matches any route pattern
+	matched := false
+	matchedPath := path
 
-	for _, p := range watcher.Order.Paths {
-		if p == r.URL.Path {
-			return true
+	for _, pattern := range watcher.Order.compiledRoutes {
+		if pattern.hasFileMatch {
+			// For file matching patterns, we need to check if files exist
+			if s.fileMatchesPattern(path, pattern) {
+				matched = true
+				// Find the actual file that matched
+				matchedPath = s.findMatchedFilePath(path, pattern)
+				break
+			}
+		} else if s.pathMatchesPattern(path, pattern) {
+			matched = true
+			break
 		}
 	}
 
-	return false
+	// If matched, check if it should be avoided
+	if matched && s.isPathAvoided(path, watcher) {
+		return false, path
+	}
+
+	return matched, matchedPath
 }
 
 func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+	origPath := r.URL.Path
 	r.URL.Path = caddyhttp.CleanPath(r.URL.Path, true)
 
-	origPath := r.URL.Path
 	decodedPath, err := url.QueryUnescape(r.URL.Path)
 	if err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -116,10 +121,11 @@ func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 	r.URL.Path = decodedPath
 
 	if !strings.HasPrefix(r.URL.Path, s.Prefix) {
+		r.URL.Path = origPath
 		return next.ServeHTTP(w, r)
 	}
 
-	if r.URL.Path == "/substrate" {
+	if r.URL.Path == s.Prefix+"/substrate" {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		return nil
 	}
@@ -147,6 +153,7 @@ func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 	}
 
 	if s.watcher.cmd == nil {
+		r.URL.Path = origPath
 		return next.ServeHTTP(w, r)
 	}
 
@@ -160,23 +167,21 @@ func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, s.Prefix)
 	}
 
-	useProxy := s.matchPath(r, s.watcher)
-	if !useProxy {
-		match := s.findBestResource(r, s.watcher)
-		if match != nil {
-			useProxy = true
-			r.URL.Path = *match
-		}
-	}
+	useProxy, matchedPath := s.matchRoute(r.URL.Path, s.watcher)
 
 	if useProxy && s.watcher.Order.Host == "" {
 		useProxy = false
 	}
 
 	if useProxy {
-		s.log.Debug("Proxying request", zap.String("upstream", s.watcher.Order.Host))
+		r.URL.Path = matchedPath
+
+		s.log.Debug("Proxying request",
+			zap.String("orig", origPath),
+			zap.String("path", r.URL.Path),
+			zap.String("upstream", s.watcher.Order.Host))
 		s.proxy.SetHost(s.watcher.Order.Host)
-		// Add forwarding headers
+
 		var scheme string
 		if r.TLS == nil {
 			scheme = "http"
@@ -192,3 +197,4 @@ func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 	r.URL.Path = origPath
 	return next.ServeHTTP(w, r)
 }
+

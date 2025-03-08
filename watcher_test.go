@@ -107,10 +107,9 @@ func TestWatcherSubmit(t *testing.T) {
 	}
 
 	order := &Order{
-		Host:     "http://localhost:8080",
-		Match:    []string{"*.html", "*.md"},
-		Paths:    []string{"/api"},
-		CatchAll: []string{"/index.html", "/404.html"},
+		Host:   "http://localhost:8080",
+		Routes: []string{"/*.html", "/*.md", "/api/*"},
+		Avoid:  []string{"/api/internal/*"},
 	}
 
 	cmd := &execCmd{}

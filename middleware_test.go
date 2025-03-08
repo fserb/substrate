@@ -143,76 +143,80 @@ func TestMWFileExists(t *testing.T) {
 	}
 }
 
-func TestMWFindBestResource(t *testing.T) {
+// This test has been removed as findBestResource is no longer used
+
+func TestMWFileMatchWithRealFile(t *testing.T) {
+	// Create a test filesystem with the example/index.md file
 	testFS := fstest.MapFS{
-		"index.html":      &fstest.MapFile{Data: []byte("index")},
-		"about.html":      &fstest.MapFile{Data: []byte("about")},
-		"blog/index.html": &fstest.MapFile{Data: []byte("blog index")},
-		"blog/post1.html": &fstest.MapFile{Data: []byte("post1")},
-		"docs/index.md":   &fstest.MapFile{Data: []byte("docs index")},
-		"docs/guide.md":   &fstest.MapFile{Data: []byte("guide")},
+		"example/index.md": &fstest.MapFile{Data: []byte("xxxx")},
 	}
 
 	order := &Order{
-		Match:    []string{"*.html", "*.md"},
-		CatchAll: []string{"/blog/index.html"},
-	}
-	order.matchers = []orderMatcher{
-		{path: "/", ext: ".html"},
-		{path: "/", ext: ".md"},
+		Routes: []string{"/example/?.md"},
 	}
 
 	watcher := &Watcher{
 		Order: order,
 	}
+	
+	// Manually compile the patterns for testing
+	watcher.Order.compiledRoutes = []*routePattern{
+		{
+			pattern: "/example/?.md", 
+			fileMatchParts: []string{"/example/", ".md"}, 
+			hasFileMatch: true,
+		},
+	}
 
 	sh := &SubstrateHandler{
-		fs:      testFS,
-		watcher: watcher,
+		fs: testFS,
 	}
 
 	tests := []struct {
-		name     string
 		path     string
-		expected *string
+		expected bool
+		expectedPath string
 	}{
-		{"Direct file match", "/index.html", strPtr("/index.html")},
-		{"Extension match", "/about", strPtr("/about.html")},
-		{"Directory index", "/blog", strPtr("/blog/index.html")},
-		{"Nested file", "/blog/post1", strPtr("/blog/post1.html")},
-		{"Different extension", "/docs/guide", strPtr("/docs/guide.md")},
-		{"CatchAll fallback", "/blog/nonexistent", strPtr("/blog/index.html")},
-		{"No match", "/nonexistent", nil},
+		{"/example", true, "/example/index.md"},
+		{"/example/index", true, "/example/index.md"},
+		{"/example/index.md", true, "/example/index.md"},
+		{"/example/nonexistent", false, "/example/nonexistent"},
 	}
 
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			req, _ := http.NewRequest("GET", tc.path, nil)
-			ctx := context.WithValue(req.Context(), "root", ".")
-			req = req.WithContext(ctx)
+		t.Run(tc.path, func(t *testing.T) {
+			matched, matchedPath := sh.matchRoute(tc.path, watcher)
 
-			result := sh.findBestResource(req, watcher)
-
-			if tc.expected == nil {
-				if result != nil {
-					t.Errorf("Expected nil, got %v", *result)
-				}
-			} else if result == nil {
-				t.Errorf("Expected %v, got nil", *tc.expected)
-			} else if *result != *tc.expected {
-				t.Errorf("Expected %v, got %v", *tc.expected, *result)
+			if matched != tc.expected {
+				t.Errorf("matchRoute(%q) = %v, want %v", tc.path, matched, tc.expected)
+			}
+			
+			if matched && matchedPath != tc.expectedPath {
+				t.Errorf("matchRoute(%q) returned path %q, want %q", tc.path, matchedPath, tc.expectedPath)
 			}
 		})
 	}
 }
 
-func TestMWMatchPath(t *testing.T) {
+func TestMWMatchRoute(t *testing.T) {
 	order := &Order{
-		Paths: []string{"/api/v1", "/api/v2/users", "/static"},
+		Routes: []string{"/api/*", "/static", "/exact/path"},
+		Avoid:  []string{"/api/internal/*"},
 	}
 
 	watcher := &Watcher{
 		Order: order,
+	}
+	
+	// Manually compile the patterns for testing
+	watcher.Order.compiledRoutes = []*routePattern{
+		{pattern: "/api/*", parts: []string{"/api/", ""}, hasStar: true},
+		{pattern: "/static", parts: []string{"/static"}, hasStar: false},
+		{pattern: "/exact/path", parts: []string{"/exact/path"}, hasStar: false},
+	}
+	
+	watcher.Order.compiledAvoid = []*routePattern{
+		{pattern: "/api/internal/*", parts: []string{"/api/internal/", ""}, hasStar: true},
 	}
 
 	sh := &SubstrateHandler{}
@@ -220,48 +224,148 @@ func TestMWMatchPath(t *testing.T) {
 	tests := []struct {
 		path     string
 		expected bool
+		expectedPath string
 	}{
-		{"/api/v1", true},
-		{"/api/v2/users", true},
-		{"/static", true},
-		{"/api", false},
-		{"/api/v2", false},
-		{"/api/v1/users", false},
-		{"/static/", false},           // Trailing slash
-		{"/static/css", false},        // Subdirectory
-		{"/api/v1?param=value", true}, // With query parameters
+		{"/api/v1", true, "/api/v1"},
+		{"/api/v2/users", true, "/api/v2/users"},
+		{"/static", true, "/static"},
+		{"/exact/path", true, "/exact/path"},
+		{"/api/internal/secrets", false, "/api/internal/secrets"}, // Should be avoided
+		{"/other/path", false, "/other/path"},           // No match
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.path, func(t *testing.T) {
-			req, _ := http.NewRequest("GET", tc.path, nil)
+			matched, matchedPath := sh.matchRoute(tc.path, watcher)
 
-			result := sh.matchPath(req, watcher)
-
-			if result != tc.expected {
-				t.Errorf("matchPath(%q) = %v, want %v", tc.path, result, tc.expected)
+			if matched != tc.expected {
+				t.Errorf("matchRoute(%q) = %v, want %v", tc.path, matched, tc.expected)
+			}
+			
+			if matchedPath != tc.expectedPath {
+				t.Errorf("matchRoute(%q) returned path %q, want %q", tc.path, matchedPath, tc.expectedPath)
 			}
 		})
 	}
 
-	req, _ := http.NewRequest("GET", "/api/v1", nil)
-	if sh.matchPath(req, nil) {
-		t.Error("matchPath with nil watcher should return false")
+	// Test with nil watcher
+	matched, _ := sh.matchRoute("/api/v1", nil)
+	if matched {
+		t.Error("matchRoute with nil watcher should return false")
 	}
 
-	if sh.matchPath(req, &Watcher{Order: nil}) {
-		t.Error("matchPath with nil order should return false")
+	// Test with nil order
+	matched, _ = sh.matchRoute("/api/v1", &Watcher{Order: nil})
+	if matched {
+		t.Error("matchRoute with nil order should return false")
 	}
 
-	// Test with empty paths
+	// Test with empty routes (should match everything except avoided)
 	emptyOrder := &Order{
-		Paths: []string{},
+		Routes: []string{},
+		Avoid:  []string{"/private/*"},
+		compiledRoutes: []*routePattern{},
+		compiledAvoid: []*routePattern{
+			{pattern: "/private/*", parts: []string{"/private/", ""}, hasStar: true},
+		},
 	}
 	emptyWatcher := &Watcher{
 		Order: emptyOrder,
 	}
-	if sh.matchPath(req, emptyWatcher) {
-		t.Error("matchPath with empty paths should return false")
+	
+	matched, _ = sh.matchRoute("/public/path", emptyWatcher)
+	if !matched {
+		t.Error("matchRoute with empty routes should match non-avoided paths")
+	}
+	
+	matched, _ = sh.matchRoute("/private/path", emptyWatcher)
+	if matched {
+		t.Error("matchRoute with empty routes should not match avoided paths")
+	}
+	
+	// Test route order preservation
+	orderedOrder := &Order{
+		Routes: []string{"/first/*", "/second/*"},
+		compiledRoutes: []*routePattern{
+			{pattern: "/first/*", parts: []string{"/first/", ""}, hasStar: true},
+			{pattern: "/second/*", parts: []string{"/second/", ""}, hasStar: true},
+		},
+	}
+	orderedWatcher := &Watcher{
+		Order: orderedOrder,
+	}
+	
+	matched, _ = sh.matchRoute("/first/path", orderedWatcher)
+	if !matched {
+		t.Error("Should match first route")
+	}
+	
+	matched, _ = sh.matchRoute("/second/path", orderedWatcher)
+	if !matched {
+		t.Error("Should match second route")
+	}
+}
+
+func TestMWMatchRouteWithFilePatterns(t *testing.T) {
+	// Create a test filesystem with some files
+	testFS := fstest.MapFS{
+		"index.md":      &fstest.MapFile{Data: []byte("index")},
+		"about.md":      &fstest.MapFile{Data: []byte("about")},
+		"blog/index.md": &fstest.MapFile{Data: []byte("blog index")},
+		"blog/post1.md": &fstest.MapFile{Data: []byte("post1")},
+	}
+
+	order := &Order{
+		Routes: []string{"/?.md", "/blog/?.md"},
+	}
+
+	watcher := &Watcher{
+		Order: order,
+	}
+	
+	// Manually compile the patterns for testing
+	watcher.Order.compiledRoutes = []*routePattern{
+		{
+			pattern: "/?.md", 
+			fileMatchParts: []string{"/", ".md"}, 
+			hasFileMatch: true,
+		},
+		{
+			pattern: "/blog/?.md", 
+			fileMatchParts: []string{"/blog/", ".md"}, 
+			hasFileMatch: true,
+		},
+	}
+
+	sh := &SubstrateHandler{
+		fs: testFS,
+	}
+
+	tests := []struct {
+		path     string
+		expected bool
+		expectedPath string
+	}{
+		{"/", true, "/index.md"},
+		{"/about", true, "/about.md"},
+		{"/about.md", true, "/about.md"},
+		{"/blog", true, "/blog/index.md"},
+		{"/blog/post1", true, "/blog/post1.md"},
+		{"/nonexistent", false, "/nonexistent"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.path, func(t *testing.T) {
+			matched, matchedPath := sh.matchRoute(tc.path, watcher)
+
+			if matched != tc.expected {
+				t.Errorf("matchRoute(%q) = %v, want %v", tc.path, matched, tc.expected)
+			}
+			
+			if matched && matchedPath != tc.expectedPath {
+				t.Errorf("matchRoute(%q) returned path %q, want %q", tc.path, matchedPath, tc.expectedPath)
+			}
+		})
 	}
 }
 
