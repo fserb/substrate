@@ -9,19 +9,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// Helper function to check if the usage pool is empty
-func checkUsagePool(t *testing.T) {
-	t.Helper()
-
-	pool.Range(func(key, value any) bool {
-		ref, exists := pool.References(key)
-		if exists && ref > 0 {
-			t.Errorf("Pool still contains key '%s' with %d references", key, ref)
-		}
-		return true
-	})
-}
-
 // TestAppLifecycle tests the basic lifecycle of the App
 func TestAppLifecycle(t *testing.T) {
 	app := &App{
@@ -61,9 +48,6 @@ func TestAppLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stop failed: %v", err)
 	}
-
-	checkUsagePool(t)
-
 }
 
 // TestAppEnvironmentPropagation tests that environment settings are properly propagated
@@ -140,3 +124,4 @@ func TestAppCaddyModule(t *testing.T) {
 		t.Errorf("Expected New() to return *App, got %T", module)
 	}
 }
+

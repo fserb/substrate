@@ -21,12 +21,9 @@ import (
 
 var (
 	salt []byte
-	pool *caddy.UsagePool
 )
 
 func init() {
-	pool = caddy.NewUsagePool()
-
 	caddy.RegisterModule(App{})
 	httpcaddyfile.RegisterGlobalOption("substrate", parseGlobalSubstrate)
 
@@ -59,9 +56,9 @@ type App struct {
 	Env       map[string]string `json:"env,omitempty"`
 	StatusLog outputTarget      `json:"status_log,omitempty"`
 
+	watchers    map[string]*Watcher
 	log         *zap.Logger
 	mutex       sync.Mutex
-	server      *Server
 	statusLogFD *os.File
 }
 
@@ -146,21 +143,7 @@ func (h *App) Start() error {
 		h.log.Error("Failed to initialize status log", zap.Error(err))
 	}
 
-	// Get the server and wait for it to start
-	obj, loaded := pool.LoadOrStore("server", &Server{})
-	h.server = obj.(*Server)
-	if !loaded {
-		h.server.log = h.log.Named("substrate server")
-		h.server.app = h
-		h.server.Start()
-	}
-
-	h.server.WaitForStart(h)
-
-	for _, watcher := range h.server.watchers {
-		watcher.Close()
-	}
-	h.server.watchers = make(map[string]*Watcher)
+	h.watchers = make(map[string]*Watcher)
 
 	return nil
 }
@@ -203,7 +186,10 @@ func (h *App) Stop() error {
 		h.statusLogFD = nil
 	}
 
-	pool.Delete("server")
+	for _, watcher := range h.watchers {
+		watcher.Close()
+	}
+
 	return nil
 }
 
@@ -211,16 +197,15 @@ func (h *App) GetWatcher(root string) *Watcher {
 	hash := sha1.Sum(append(salt, []byte(root)...))
 	key := hex.EncodeToString(hash[:])
 
-	got, ok := h.server.watchers[key]
+	got, ok := h.watchers[key]
 	if ok {
 		return got
 	}
 
 	watcher := &Watcher{
-		Root:   root,
-		app:    h,
-		log:    h.log.With(zap.String("root", root)),
-		suburl: fmt.Sprintf("%s/%s", h.server.Host, key),
+		Root: root,
+		app:  h,
+		log:  h.log.With(zap.String("root", root)),
 	}
 
 	if err := watcher.init(); err != nil {
@@ -228,7 +213,7 @@ func (h *App) GetWatcher(root string) *Watcher {
 		return nil
 	}
 
-	h.server.watchers[key] = watcher
+	h.watchers[key] = watcher
 	return watcher
 }
 

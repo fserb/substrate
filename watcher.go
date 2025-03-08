@@ -3,11 +3,11 @@ package substrate
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/user"
 	"path"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -15,41 +15,18 @@ import (
 	"go.uber.org/zap"
 )
 
-// Order represents a command from a substrate process
-type Order struct {
-	// Host is the upstream server to proxy requests to
-	Host string `json:"host,omitempty"`
-
-	// Routes contains patterns for matching paths
-	// Format: "/path/*" where * matches anything including /
-	Routes []string `json:"routes,omitempty"`
-
-	// Avoid contains patterns for paths to avoid matching
-	// These take precedence over Routes
-	Avoid []string `json:"avoid,omitempty"`
-
-	// compiled patterns for efficient matching
-	compiledRoutes []routePattern `json:"-"`
-	compiledAvoid  []routePattern `json:"-"`
-}
-
-type routePattern []string
-
 // Watcher watches for a substrate file in a root directory and manages
 // the lifecycle of substrate processes.
 type Watcher struct {
 	// Root is the directory to watch for a substrate file
 	Root string
-
-	// Order is the current active order from the substrate process
-	Order *Order
+	Port int
 
 	cmd     *execCmd           // Current command answering queries
 	watcher *fsnotify.Watcher  // File system watcher
 	log     *zap.Logger        // Logger
 	cancel  context.CancelFunc // Function to cancel the watch goroutine
 	app     *App               // Reference to the parent App
-	suburl  string             // URL for the substrate process to communicate with
 }
 
 // updateWatcher configures the watcher based on whether the substrate file exists
@@ -181,7 +158,20 @@ func (w *Watcher) stopCommand() {
 		w.cmd.Stop()
 		w.cmd = nil
 	}
-	w.Order = nil
+}
+
+func GetFreePort() (int, error) {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		return 0, err
+	}
+
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
 func (w *Watcher) startLoading() {
@@ -196,8 +186,17 @@ func (w *Watcher) startLoading() {
 	w.log.Info("Executing substrate")
 	w.WriteStatusLog("A", "Executing substrate")
 
+	port, err := GetFreePort()
+	if err != nil {
+		w.log.Error("Failed to get free port", zap.Error(err))
+		w.WriteStatusLog("A", "Failed to get free port")
+		w.stopCommand()
+		return
+	}
+	w.Port = port
+
 	cmd := &execCmd{
-		Command: []string{substFile},
+		Command: []string{substFile, fmt.Sprintf("%d", w.Port)},
 		Dir:     w.Root,
 		watcher: w,
 		log:     w.log,
@@ -242,29 +241,6 @@ func (w *Watcher) Close() {
 	w.stopCommand()
 }
 
-// IsReady returns true if the watcher has a command with an order
-func (w *Watcher) IsReady() bool {
-	return w.cmd != nil && w.Order != nil
-}
-
-// WaitUntilReady waits for the watcher to be ready or determines it has no substrate
-// Returns true if the watcher is ready, false if there's no substrate or timeout occurs
-func (w *Watcher) WaitUntilReady(timeout time.Duration) bool {
-	// We have an active order working or no substrate.
-	if w.cmd == nil || w.Order != nil {
-		return true
-	}
-
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if w.cmd == nil || w.Order != nil {
-			return true
-		}
-		time.Sleep(50 * time.Millisecond) // Short sleep to avoid busy waiting
-	}
-	return false
-}
-
 // GetCmd returns the current command
 func (w *Watcher) GetCmd() *execCmd {
 	return w.cmd
@@ -292,67 +268,5 @@ func (w *Watcher) WriteStatusLog(msgType, message string) {
 	case "null":
 		// Do nothing
 	}
-}
-
-// Submit processes an order from a substrate process
-func (w *Watcher) Submit(o *Order) {
-	if o == nil {
-		w.log.Error("Received nil order")
-		w.WriteStatusLog("A", "Received nil order")
-		return
-	}
-
-	w.log.Info("Processing new order",
-		zap.String("host", o.Host),
-		zap.Int("routes", len(o.Routes)),
-		zap.Int("avoid", len(o.Avoid)))
-
-	w.WriteStatusLog("A", fmt.Sprintf(
-		"Processing new order - host: %s, routes: %d, avoid: %d",
-		o.Host, len(o.Routes), len(o.Avoid)))
-
-	// Compile route patterns
-	o.compiledRoutes = make([]*routePattern, len(o.Routes))
-	for i, p := range o.Routes {
-		o.compiledRoutes[i] = w.compileRoutePattern(p)
-	}
-	o.compiledAvoid = make([]*routePattern, len(o.Avoid))
-	for i, p := range o.Avoid {
-		o.compiledAvoid[i] = w.compileRoutePattern(p)
-	}
-
-	w.Order = o
-	w.log.Info("New substrate ready and processed")
-	w.WriteStatusLog("A", "New substrate ready and processed")
-	clearCache()
-}
-
-func (w *Watcher) compileRoutePattern(pattern string) routePattern {
-	if pattern == "" {
-		return nil
-	}
-
-	// Ensure pattern starts with /
-	if !strings.HasPrefix(pattern, "/") {
-		pattern = "/" + pattern
-	}
-
-	parts := make(routePattern, 0)
-
-	start := 0
-	for i := 0; i < len(pattern); i++ {
-		if pattern[i] == '*' || pattern[i] == '?' {
-			if start < i {
-				parts = append(parts, pattern[start:i])
-			}
-			parts = append(parts, string(pattern[i]))
-			start = i + 1
-		}
-	}
-	if start < len(pattern) {
-		parts = append(parts, pattern[start:])
-	}
-
-	return parts
 }
 
