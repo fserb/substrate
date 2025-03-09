@@ -6,13 +6,15 @@ console.log("SUBSTRATE LISTENING ON", PORT);
 Deno.serve({ port: PORT }, (req) => {
   const path = (new URL(req.url)).pathname;
 
-  if (path == "/") {
-    return new Response("", { status: 515 });
+  if (path != "/page.md") {
+    return new Response(null, { status: 515 });
   }
 
-  return new Response(`SUBSTRATE
+  const r = new Response(`SUBSTRATE
 Request path: ${path}
 X-Forwarded-Path: ${req.headers.get("x-forwarded-path")}
 `);
+  r.headers.set("x-substrate", "true");
+  return r;
 });
 
