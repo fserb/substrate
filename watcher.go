@@ -27,6 +27,7 @@ type Watcher struct {
 	log     *zap.Logger        // Logger
 	cancel  context.CancelFunc // Function to cancel the watch goroutine
 	app     *App               // Reference to the parent App
+	isReady chan struct{}      // Channel to signal when the substrate process is ready
 }
 
 // updateWatcher configures the watcher based on whether the substrate file exists.
@@ -228,6 +229,33 @@ func (w *Watcher) startLoading() {
 	w.stopCommand()
 	w.cmd = cmd
 	go w.cmd.Run()
+
+	w.isReady = make(chan struct{})
+
+	if w.cmd == nil {
+		close(w.isReady)
+		return
+	}
+
+	server := fmt.Sprintf("localhost:%d", w.Port)
+
+	delay := 1 * time.Millisecond
+	go func() {
+		for {
+			conn, err := net.Dial("tcp", server)
+			if err == nil {
+				conn.Close()
+				w.WriteStatusLog("A", "Substrate process is ready")
+				close(w.isReady)
+				return
+			}
+			time.Sleep(delay)
+			delay *= 2
+			if delay > 1*time.Second {
+				delay = 1 * time.Second
+			}
+		}
+	}()
 }
 
 func (w *Watcher) Close() {
@@ -265,3 +293,4 @@ func (w *Watcher) WriteStatusLog(msgType, message string) {
 		// Do nothing
 	}
 }
+

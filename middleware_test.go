@@ -237,3 +237,84 @@ func TestSubstrateHandlerHeaders(t *testing.T) {
 			req.Header.Get("X-Forwarded-BaseURL"))
 	}
 }
+
+func TestSubstrateHandlerStatus515Fallback(t *testing.T) {
+	// Create a custom mock proxy that returns status 515
+	mockProxy := &mockReverseProxy{}
+
+	// Override ServeHTTP to write status 515
+	originalServeHTTP := mockProxy.ServeHTTP
+	mockProxy.ServeHTTP = func(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+		w.WriteHeader(515)
+		w.Write([]byte("This content should be discarded"))
+		mockProxy.called = true
+		return nil
+	}
+
+	// Setup handler
+	handler := &SubstrateHandler{
+		Prefix: "/app",
+		log:    zap.NewNop(),
+		proxy:  mockProxy,
+		app:    &App{log: zap.NewNop()},
+	}
+
+	// Setup watcher
+	handler.watcher = &Watcher{
+		Port: 8080,
+		log:  zap.NewNop(),
+		cmd: &execCmd{
+			log: zap.NewNop(),
+		},
+	}
+
+	// Create request with original path
+	req := httptest.NewRequest("GET", "/app/index.html", nil)
+	origPath := req.URL.Path
+
+	// Setup next handler to verify it gets called
+	nextCalled := false
+	nextHandler := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		nextCalled = true
+		// Verify path was restored
+		if r.URL.Path != origPath {
+			t.Errorf("Expected path to be restored to '%s', got '%s'", origPath, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Next handler content"))
+		return nil
+	})
+
+	// Create response recorder
+	w := httptest.NewRecorder()
+
+	// Call handler
+	err := handler.ServeHTTP(w, req, nextHandler)
+	if err != nil {
+		t.Fatalf("ServeHTTP returned error: %v", err)
+	}
+
+	// Verify proxy was called
+	if !mockProxy.called {
+		t.Error("Expected proxy to be called, but it wasn't")
+	}
+
+	// Verify next handler was called due to 515 status
+	if !nextCalled {
+		t.Error("Expected next handler to be called after 515 status, but it wasn't")
+	}
+
+	// Verify the response contains the next handler's content, not the 515 content
+	if w.Body.String() != "Next handler content" {
+		t.Errorf("Expected response body to be 'Next handler content', got '%s'", w.Body.String())
+	}
+
+	// Verify the status code is 200 (from next handler) not 515
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
+	}
+
+	// Restore original ServeHTTP
+	mockProxy.ServeHTTP = originalServeHTTP
+}
+
