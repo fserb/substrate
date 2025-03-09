@@ -2,13 +2,9 @@
 
 ## Overview
 
-Substrate is a custom Caddy v2 module designed to execute commands based on HTTP requests.
-It manages processes and proxies traffic to dynamically created backends.
+Substrate is a custom Caddy v2 module that enables dynamic backend execution based on HTTP requests. It automatically manages the lifecycle of backend processes and proxies traffic to them, creating a seamless integration between Caddy and your custom backend code.
 
-What's special about it is that it allows the proxies themselves to tell Caddy which files
-and paths they are set up to respond.
-
-You can think of it as a generic Franken PHP for your own backend.
+The module watches for a special `substrate` executable file in your site's directory. When this file is present, Substrate launches it as a backend process and proxies relevant requests to it. When the file is removed or modified, Substrate automatically stops or restarts the process.
 
 ## Installation
 
@@ -20,68 +16,75 @@ xcaddy build --with github.com/fserb/substrate
 
 ## Configuration
 
-Substrate provides a global app and a handler for HTTP requests.
+Substrate provides both global configuration options and a handler for HTTP requests.
 
 ### Global Configuration
 
-To enable the module globally, use the `substrate` directive in the global options block:
+Configure global Substrate settings in the Caddyfile:
 
 ```caddyfile
 {
     substrate {
-        env <key> <value>
-        restart_policy always|never|on_failure
-        redirect_stdout stdout|stderr|null|file <filename>
-        redirect_stderr stdout|stderr|null|file <filename>
+        env KEY VALUE           # Set environment variables for substrate processes
+        status_log stdout|stderr|null|file FILENAME  # Configure status logging
     }
 }
 ```
 
-- **env**: Set environment variables for the process (can be repeated).
-- **restart_policy**: Restart behavior.
-  - `always`: Always restart when the process exits.
-  - `never`: Never restart.
-  - `on_failure`: Restart only if the process exits with a failure.
-- **redirect_stdout**/**redirect_stderr**:
-  - `stdout`: Output to stdout.
-  - `stderr`: Output to stderr.
-  - `null`: Discard output.
-  - `file <filename>`: Write output to the specified file.
-
+- **env**: Set environment variables for all substrate processes (can be repeated)
+- **status_log**: Configure where status logs are written
+  - `stdout`: Output to standard output (default)
+  - `stderr`: Output to standard error
+  - `null`: Discard output
+  - `file FILENAME`: Write output to the specified file
 
 ### Handler Configuration
 
-The `substrate` directive can be added to site blocks to define command execution logic. The syntax is:
+Add the `substrate` directive to site blocks:
 
 ```caddyfile
-server:80 {
-  root /x/y/z
-  substrate [subpath]
-  file_serve
-```
-
-`substrate` will look for a `substrate` executable in the root directory.
-
-
-## How It Works
-
-Substrate will start your proxy command and set up a `SUBSTRATE` env var with a URL.
-Once your proxy is running, it should send a `POST` request to this URL, containing a
-JSON, with the following format:
-
-```js
-{
-  host: "localhost:3333", // the host:port where the proxy is listening at.
-  match: ["*.ext"],       // the list of file extensions we should listen to.
-                          // this also automatically handles paths with the omitted
-                          // extension or index.ext.
-  paths: ["/up"],         // hard-coded paths that this proxy can answer.
-  catch_all: ["/path/catchall.ext"],  // files that behave as catch-all for any subdir.
+example.com {
+    root * /path/to/site
+    substrate [/prefix]
+    file_server
 }
 ```
 
-once this gets received, Caddy will start forwarding the proper requests to the proxy.
-You can send multiple jsons to the provided URL, overwriting the previous commands.
+- The optional `/prefix` parameter specifies a URL path prefix for substrate requests
+- If no prefix is specified, substrate will handle requests at the root path
 
-For more details, check the example directory.
+## How It Works
+
+1. Substrate watches for a file named `substrate` in your site's root directory
+2. When the file is found, Substrate:
+   - Executes it as a backend process
+   - Passes a port number as the first argument
+   - Waits for the process to start listening on that port
+   - Proxies relevant requests to the backend
+
+3. The backend process receives:
+   - The port number as its first command-line argument
+   - Standard environment variables plus any configured in the global settings
+   - If running as root, the process runs with the permissions of the file owner
+
+4. Request handling:
+   - Requests matching the configured prefix are proxied to the backend
+   - The backend can return status code 515 to indicate that Caddy should handle the request instead
+   - Headers `X-Forwarded-Path` and `X-Forwarded-BaseURL` are added to proxied requests
+
+5. Process management:
+   - If the process exits, it's automatically restarted with exponential backoff
+   - When the substrate file is removed, the process is stopped
+   - When the substrate file is modified, the process is restarted
+
+## Status Logging
+
+Substrate provides detailed status logs to help with debugging:
+- `[A]` messages: Administrative actions (starting/stopping processes)
+- `[S]` messages: Standard output from the substrate process
+- `[E]` messages: Standard error from the substrate process
+
+## Examples
+
+See the `example` directory for complete working examples.
 
