@@ -15,7 +15,7 @@ $ curl -s http://localhost:8722/page.md
 page
 $ curl -s http://localhost:8722/pre/page
 SUBSTRATE
-Request path: /page.md
+Request path: /page
 X-Forwarded-Path: /pre/page
 page
 $ curl -w "%{http_code}" -s http://localhost:8722/up

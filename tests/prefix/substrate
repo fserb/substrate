@@ -1,19 +1,5 @@
 #!/usr/bin/env -S deno run -A
 
-const PORT = 8724;
-const SUB = Deno.env.get("SUBSTRATE") ?? "";
-await fetch(SUB, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    host: `:${PORT}`,
-    match: ["*.md"],
-    paths: ["/up"],
-    catch_all: ["/all.md"],
-  }),
-});
-
-Deno.serve({ port: PORT }, (req) => new Response("INVALID\n"));
+const PORT = Number(Deno.args[0]) ?? 8723;
+Deno.serve({ port: PORT }, () => new Response("INVALID\n"));
 
