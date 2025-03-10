@@ -59,7 +59,6 @@ func TestSubstrateHandlerServeHTTP(t *testing.T) {
 			prefix:         "/app",
 			watcherExists:  true,
 			cmdExists:      true,
-			port:           8080,
 			expectedStatus: http.StatusOK,
 			expectedPath:   "/index.html",
 			expectProxy:    true,
@@ -70,7 +69,6 @@ func TestSubstrateHandlerServeHTTP(t *testing.T) {
 			prefix:         "/app",
 			watcherExists:  true,
 			cmdExists:      true,
-			port:           8080,
 			expectedStatus: http.StatusOK,
 			expectedPath:   "/some file.html",
 			expectProxy:    true,
@@ -81,7 +79,6 @@ func TestSubstrateHandlerServeHTTP(t *testing.T) {
 			prefix:         "",
 			watcherExists:  true,
 			cmdExists:      true,
-			port:           8080,
 			expectedStatus: http.StatusOK,
 			expectedPath:   "/index.html",
 			expectProxy:    true,
@@ -113,8 +110,7 @@ func TestSubstrateHandlerServeHTTP(t *testing.T) {
 			// Setup watcher if needed
 			if tt.watcherExists {
 				watcher := &Watcher{
-					Port: tt.port,
-					log:  zap.NewNop(),
+					log: zap.NewNop(),
 				}
 				if tt.cmdExists {
 					watcher.cmd = &execCmd{
