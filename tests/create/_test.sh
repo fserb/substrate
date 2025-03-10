@@ -17,6 +17,8 @@ $ curl -s http://localhost:8722/up
 SUBSTRATE
 Request path: http://localhost:8722/up
 X-Forwarded-Path: /up
+$ curl -s http://localhost:8722/hello.txt
+hello
 $ mv substrate sub
 $ curl -s http://localhost:8722/page.md
 page

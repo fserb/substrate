@@ -67,12 +67,11 @@ func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 		return next.ServeHTTP(w, r)
 	}
 
+	<-s.watcher.isReady
 	if s.watcher.cmd == nil {
 		r.URL.Path = origPath
 		return next.ServeHTTP(w, r)
 	}
-
-	<-s.watcher.isReady
 
 	if s.Prefix != "" {
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, s.Prefix)

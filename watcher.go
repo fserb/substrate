@@ -67,6 +67,7 @@ func (w *Watcher) updateWatcher() error {
 		}
 		w.log.Debug("Watching directory for substrate file", zap.String("dir", w.Root))
 		w.stopCommand()
+		w.setIsReady()
 	}
 
 	return nil
@@ -94,6 +95,8 @@ func (w *Watcher) init() error {
 		return fmt.Errorf("failed to create file watcher: %w", err)
 	}
 	w.watcher = watcher
+
+	w.setNotReady()
 
 	if err := w.updateWatcher(); err != nil {
 		watcher.Close()
@@ -155,6 +158,9 @@ func (w *Watcher) watch(ctx context.Context) {
 			w.statusCache.Purge()
 			w.setNotReady()
 			debounceTimer.Reset(debounceDelay)
+			if w.cmd == nil {
+				w.cmd = &execCmd{}
+			}
 
 		case err, ok := <-watcher.Errors:
 			if !ok {
@@ -302,7 +308,9 @@ func (w *Watcher) setNotReady() {
 }
 
 func (w *Watcher) setIsReady() {
-	close(w.isReady)
+	if w.isReady != nil {
+		close(w.isReady)
+	}
 }
 
 func (w *Watcher) Close() {
