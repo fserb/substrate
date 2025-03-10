@@ -5,6 +5,7 @@ go 1.23.5
 require (
 	github.com/caddyserver/caddy/v2 v2.9.1
 	github.com/fsnotify/fsnotify v1.8.0
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	go.uber.org/zap v1.27.0
 )
 

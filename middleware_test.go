@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"go.uber.org/zap"
 )
 
@@ -121,6 +122,8 @@ func TestSubstrateHandlerServeHTTP(t *testing.T) {
 				}
 				handler.watcher = watcher
 			}
+			cache, _ := lru.New[string, bool](1)
+			handler.watcher.statusCache = cache
 
 			// Create request
 			req := httptest.NewRequest("GET", tt.path, nil)
@@ -238,18 +241,20 @@ func TestSubstrateHandlerHeaders(t *testing.T) {
 	}
 }
 
+type fallbackReverseProxy struct {
+	mockReverseProxy
+}
+
+func (m *fallbackReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+	w.WriteHeader(515)
+	w.Write([]byte("This content should be discarded"))
+	m.mockReverseProxy.called = true
+	return nil
+}
+
 func TestSubstrateHandlerStatus515Fallback(t *testing.T) {
 	// Create a custom mock proxy that returns status 515
-	mockProxy := &mockReverseProxy{}
-
-	// Override ServeHTTP to write status 515
-	originalServeHTTP := mockProxy.ServeHTTP
-	mockProxy.ServeHTTP = func(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-		w.WriteHeader(515)
-		w.Write([]byte("This content should be discarded"))
-		mockProxy.called = true
-		return nil
-	}
+	mockProxy := &fallbackReverseProxy{}
 
 	// Setup handler
 	handler := &SubstrateHandler{
@@ -313,8 +318,4 @@ func TestSubstrateHandlerStatus515Fallback(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
 	}
-
-	// Restore original ServeHTTP
-	mockProxy.ServeHTTP = originalServeHTTP
 }
-

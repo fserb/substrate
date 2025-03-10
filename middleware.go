@@ -25,6 +25,7 @@ func (w *statusCodeResponseWriter) WriteHeader(statusCode int) {
 
 func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	origPath := r.URL.Path
+
 	r.URL.Path = caddyhttp.CleanPath(r.URL.Path, true)
 
 	decodedPath, err := url.QueryUnescape(r.URL.Path)
@@ -61,6 +62,11 @@ func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 		}
 	}
 
+	// Check if this path is in the bypass cache
+	if _, found := s.watcher.statusCache.Get(origPath); found {
+		return next.ServeHTTP(w, r)
+	}
+
 	if s.watcher.cmd == nil {
 		r.URL.Path = origPath
 		return next.ServeHTTP(w, r)
@@ -92,6 +98,8 @@ func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 	err = s.proxy.ServeHTTP(statusWriter, r, next)
 
 	if statusWriter.status == 515 {
+		s.watcher.statusCache.Add(origPath, true)
+
 		r.URL.Path = origPath
 		clear(w.Header())
 		return next.ServeHTTP(w, r)
@@ -99,4 +107,3 @@ func (s *SubstrateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 
 	return err
 }
-

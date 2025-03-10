@@ -41,19 +41,19 @@ func TestStatusCodeResponseWriter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a response recorder
 			rec := httptest.NewRecorder()
-			
+
 			// Create our custom writer
 			writer := &statusCodeResponseWriter{ResponseWriter: rec}
-			
+
 			// Write the status code and content
 			writer.WriteHeader(tt.statusCode)
 			writer.Write([]byte(tt.content))
-			
+
 			// Check the status code
 			if writer.Status() != tt.expectedStatus {
 				t.Errorf("Expected status %d, got %d", tt.expectedStatus, writer.Status())
 			}
-			
+
 			// Check the response body
 			if rec.Body.String() != tt.expectedBody {
 				t.Errorf("Expected body %q, got %q", tt.expectedBody, rec.Body.String())
@@ -65,10 +65,10 @@ func TestStatusCodeResponseWriter(t *testing.T) {
 func TestStatusCodeResponseWriterDefaultStatus(t *testing.T) {
 	rec := httptest.NewRecorder()
 	writer := &statusCodeResponseWriter{ResponseWriter: rec}
-	
+
 	// Write without setting status code
 	writer.Write([]byte("Hello"))
-	
+
 	// Status should default to 200 OK
 	if writer.Status() != http.StatusOK {
 		t.Errorf("Expected default status %d, got %d", http.StatusOK, writer.Status())
@@ -78,13 +78,13 @@ func TestStatusCodeResponseWriterDefaultStatus(t *testing.T) {
 func TestStatusCodeResponseWriterImplementsInterfaces(t *testing.T) {
 	rec := httptest.NewRecorder()
 	writer := &statusCodeResponseWriter{ResponseWriter: rec}
-	
+
 	// Test http.Flusher interface
 	_, isFlusher := interface{}(writer).(http.Flusher)
 	if !isFlusher {
 		t.Error("Writer does not implement http.Flusher")
 	}
-	
+
 	// Test http.Hijacker interface
 	_, isHijacker := interface{}(writer).(http.Hijacker)
 	if !isHijacker {

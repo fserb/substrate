@@ -12,7 +12,12 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"go.uber.org/zap"
+)
+
+const (
+	LRUCacheSize = 256
 )
 
 // Watcher watches for a substrate file in a root directory and manages
@@ -22,12 +27,13 @@ type Watcher struct {
 	Root string
 	Port int
 
-	cmd     *execCmd           // Current command answering queries
-	watcher *fsnotify.Watcher  // File system watcher
-	log     *zap.Logger        // Logger
-	cancel  context.CancelFunc // Function to cancel the watch goroutine
-	app     *App               // Reference to the parent App
-	isReady chan struct{}      // Channel to signal when the substrate process is ready
+	cmd         *execCmd           // Current command answering queries
+	watcher     *fsnotify.Watcher  // File system watcher
+	log         *zap.Logger        // Logger
+	cancel      context.CancelFunc // Function to cancel the watch goroutine
+	app         *App               // Reference to the parent App
+	isReady     chan struct{}      // Channel to signal when the substrate process is ready
+	statusCache *lru.Cache[string, bool]
 }
 
 // updateWatcher configures the watcher based on whether the substrate file exists.
@@ -75,6 +81,12 @@ func (w *Watcher) init() error {
 	if _, err := os.Stat(w.Root); os.IsNotExist(err) {
 		return fmt.Errorf("root directory does not exist: %w", err)
 	}
+
+	cache, err := lru.New[string, bool](LRUCacheSize)
+	if err != nil {
+		return fmt.Errorf("error creating bypass cache: %w", err)
+	}
+	w.statusCache = cache
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -293,4 +305,3 @@ func (w *Watcher) WriteStatusLog(msgType, message string) {
 		// Do nothing
 	}
 }
-
