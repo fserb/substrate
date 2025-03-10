@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	LRUCacheSize = 256
+	LRUCacheSize  = 256
+	debounceDelay = 100 * time.Millisecond
 )
 
 // Watcher watches for a substrate file in a root directory and manages
@@ -108,7 +109,8 @@ func (w *Watcher) init() error {
 
 // watch monitors the substrate file for changes in a separate goroutine.
 // It responds to file system events and errors, updating the watcher state
-// accordingly.
+// accordingly. Events are debounced to avoid processing multiple events
+// that occur in quick succession.
 func (w *Watcher) watch(ctx context.Context) {
 	watcher := w.watcher
 
@@ -120,6 +122,8 @@ func (w *Watcher) watch(ctx context.Context) {
 	defer w.log.Debug("File watcher stopped")
 
 	substPath := filepath.Join(w.Root, "substrate")
+
+	var debounceTimer *time.Timer
 
 	for {
 		select {
@@ -139,9 +143,16 @@ func (w *Watcher) watch(ctx context.Context) {
 
 			w.log.Debug("File event", zap.String("path", event.Name), zap.String("event", event.Op.String()))
 
-			if err := w.updateWatcher(); err != nil {
-				w.log.Error("Failed to update watcher", zap.Error(err))
+			if debounceTimer != nil {
+				debounceTimer.Stop()
 			}
+			debounceTimer = time.AfterFunc(debounceDelay, func() {
+				debounceTimer = nil
+				w.log.Debug("Processing debounced events")
+				if err := w.updateWatcher(); err != nil {
+					w.log.Error("Failed to update watcher", zap.Error(err))
+				}
+			})
 
 		case err, ok := <-watcher.Errors:
 			if !ok {
@@ -158,6 +169,9 @@ func (w *Watcher) watch(ctx context.Context) {
 
 		case <-ctx.Done():
 			w.log.Debug("Watcher context cancelled")
+			if debounceTimer != nil {
+				debounceTimer.Stop()
+			}
 			return
 		}
 	}
@@ -316,3 +330,4 @@ func (w *Watcher) WriteStatusLog(msgType, message string) {
 		// Do nothing
 	}
 }
+

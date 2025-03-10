@@ -128,7 +128,8 @@ func TestWatcherWatch(t *testing.T) {
 		t.Fatalf("Failed to create substrate file: %v", err)
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	// Wait for debounce period plus a little extra
+	time.Sleep(150 * time.Millisecond)
 
 	if watcher.cmd == nil {
 		t.Error("Watcher did not start loading after substrate file creation")
@@ -139,7 +140,8 @@ func TestWatcherWatch(t *testing.T) {
 		t.Fatalf("Failed to remove substrate file: %v", err)
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	// Wait for debounce period plus a little extra
+	time.Sleep(150 * time.Millisecond)
 
 	watcher.Close()
 }
