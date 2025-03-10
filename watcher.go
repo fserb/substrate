@@ -143,16 +143,18 @@ func (w *Watcher) watch(ctx context.Context) {
 
 			w.log.Debug("File event", zap.String("path", event.Name), zap.String("event", event.Op.String()))
 
-			if debounceTimer != nil {
-				debounceTimer.Stop()
+			if debounceTimer == nil {
+				debounceTimer = time.AfterFunc(debounceDelay, func() {
+					w.log.Debug("Processing debounced events")
+					if err := w.updateWatcher(); err != nil {
+						w.log.Error("Failed to update watcher", zap.Error(err))
+					}
+				})
 			}
-			debounceTimer = time.AfterFunc(debounceDelay, func() {
-				debounceTimer = nil
-				w.log.Debug("Processing debounced events")
-				if err := w.updateWatcher(); err != nil {
-					w.log.Error("Failed to update watcher", zap.Error(err))
-				}
-			})
+
+			w.statusCache.Purge()
+			w.setNotReady()
+			debounceTimer.Reset(debounceDelay)
 
 		case err, ok := <-watcher.Errors:
 			if !ok {
@@ -252,25 +254,14 @@ func (w *Watcher) startLoading() {
 		cmd.Env = w.app.Env
 	}
 
+	w.setNotReady()
 	w.stopCommand()
 	w.cmd = cmd
+	w.statusCache.Purge()
 	go w.cmd.Run()
 
-	if w.isReady != nil {
-		select {
-		case _, ok := <-w.isReady:
-			if !ok {
-				w.isReady = nil
-			}
-		default:
-		}
-	}
-	if w.isReady == nil {
-		w.isReady = make(chan struct{})
-	}
-
 	if w.cmd == nil {
-		close(w.isReady)
+		w.setIsReady()
 		return
 	}
 
@@ -283,7 +274,7 @@ func (w *Watcher) startLoading() {
 			if err == nil {
 				conn.Close()
 				w.WriteStatusLog("A", "Substrate process is ready")
-				close(w.isReady)
+				w.setIsReady()
 				return
 			}
 			time.Sleep(delay)
@@ -293,6 +284,25 @@ func (w *Watcher) startLoading() {
 			}
 		}
 	}()
+}
+
+func (w *Watcher) setNotReady() {
+	if w.isReady != nil {
+		select {
+		case _, ok := <-w.isReady:
+			if !ok {
+				w.isReady = nil
+			}
+		default:
+		}
+	}
+	if w.isReady == nil {
+		w.isReady = make(chan struct{})
+	}
+}
+
+func (w *Watcher) setIsReady() {
+	close(w.isReady)
 }
 
 func (w *Watcher) Close() {
@@ -330,4 +340,3 @@ func (w *Watcher) WriteStatusLog(msgType, message string) {
 		// Do nothing
 	}
 }
-
