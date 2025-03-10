@@ -1,12 +1,13 @@
 #!/usr/bin/env -S deno run -A
 
 const PORT = Number(Deno.args[0]) ?? 8723;
-console.log("SUBSTRATE LISTENING ON", PORT);
+
+const ANSWER = new Set(["/up", "/page"]);
 
 Deno.serve({ port: PORT }, (req) => {
   const path = (new URL(req.url)).pathname;
 
-  if (path != "/page.md") {
+  if (!ANSWER.has(path)) {
     return new Response(null, { status: 515 });
   }
 

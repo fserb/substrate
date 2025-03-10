@@ -344,4 +344,3 @@ func TestSubstrateHandlerStatus515Fallback(t *testing.T) {
 		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
 	}
 }
-

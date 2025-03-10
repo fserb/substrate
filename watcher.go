@@ -242,7 +242,18 @@ func (w *Watcher) startLoading() {
 	w.cmd = cmd
 	go w.cmd.Run()
 
-	w.isReady = make(chan struct{})
+	if w.isReady != nil {
+		select {
+		case _, ok := <-w.isReady:
+			if !ok {
+				w.isReady = nil
+			}
+		default:
+		}
+	}
+	if w.isReady == nil {
+		w.isReady = make(chan struct{})
+	}
 
 	if w.cmd == nil {
 		close(w.isReady)
