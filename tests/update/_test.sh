@@ -10,7 +10,7 @@ $ curl -s http://localhost:8722/up
 SUBSTRATE
 Request path: http://localhost:8722/up
 X-Forwarded-Path: /up
-$ sed -ie 's/\[""\]/["*.md"]/' substrate
+$ sed -ie 's/page"/page.md"/' substrate
 *
 $ curl -s http://localhost:8722/page.md
 SUBSTRATE
