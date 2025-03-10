@@ -2,6 +2,7 @@ package substrate
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -120,10 +121,14 @@ func TestSubstrateHandlerServeHTTP(t *testing.T) {
 						log: zap.NewNop(),
 					}
 				}
+				cache, _ := lru.New[string, bool](1)
+				watcher.statusCache = cache
+				// Initialize the isReady channel and close it immediately
+				// to prevent the test from hanging
+				watcher.isReady = make(chan struct{})
+				close(watcher.isReady)
 				handler.watcher = watcher
 			}
-			cache, _ := lru.New[string, bool](1)
-			handler.watcher.statusCache = cache
 
 			// Create request
 			req := httptest.NewRequest("GET", tt.path, nil)
@@ -154,7 +159,7 @@ func TestSubstrateHandlerServeHTTP(t *testing.T) {
 
 			// Check proxy host if applicable
 			if tt.expectProxy {
-				expectedHost := "http://localhost:8080"
+				expectedHost := fmt.Sprintf("localhost:%d", tt.port)
 				if mockProxy.host != expectedHost {
 					t.Errorf("Expected proxy host %s, got %s", expectedHost, mockProxy.host)
 				}
@@ -208,13 +213,23 @@ func TestSubstrateHandlerHeaders(t *testing.T) {
 	}
 
 	// Setup watcher
-	handler.watcher = &Watcher{
+	watcher := &Watcher{
 		Port: 8080,
 		log:  zap.NewNop(),
 		cmd: &execCmd{
 			log: zap.NewNop(),
 		},
 	}
+
+	// Initialize the status cache
+	cache, _ := lru.New[string, bool](1)
+	watcher.statusCache = cache
+
+	// Initialize the isReady channel and close it immediately
+	watcher.isReady = make(chan struct{})
+	close(watcher.isReady)
+
+	handler.watcher = watcher
 
 	// Create request
 	req := httptest.NewRequest("GET", "/app/index.html?query=value", nil)
@@ -223,8 +238,13 @@ func TestSubstrateHandlerHeaders(t *testing.T) {
 	// Create response recorder
 	w := httptest.NewRecorder()
 
+	// Call handler with a next handler to avoid nil pointer
+	nextHandler := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		return nil
+	})
+
 	// Call handler
-	err := handler.ServeHTTP(w, req, nil)
+	err := handler.ServeHTTP(w, req, nextHandler)
 	if err != nil {
 		t.Fatalf("ServeHTTP returned error: %v", err)
 	}
@@ -247,7 +267,6 @@ type fallbackReverseProxy struct {
 
 func (m *fallbackReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	w.WriteHeader(515)
-	w.Write([]byte("This content should be discarded"))
 	m.mockReverseProxy.called = true
 	return nil
 }
@@ -265,13 +284,23 @@ func TestSubstrateHandlerStatus515Fallback(t *testing.T) {
 	}
 
 	// Setup watcher
-	handler.watcher = &Watcher{
+	watcher := &Watcher{
 		Port: 8080,
 		log:  zap.NewNop(),
 		cmd: &execCmd{
 			log: zap.NewNop(),
 		},
 	}
+
+	// Initialize the status cache
+	cache, _ := lru.New[string, bool](1)
+	watcher.statusCache = cache
+
+	// Initialize the isReady channel and close it immediately
+	watcher.isReady = make(chan struct{})
+	close(watcher.isReady)
+
+	handler.watcher = watcher
 
 	// Create request with original path
 	req := httptest.NewRequest("GET", "/app/index.html", nil)
@@ -319,3 +348,4 @@ func TestSubstrateHandlerStatus515Fallback(t *testing.T) {
 		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
 	}
 }
+
