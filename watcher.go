@@ -328,23 +328,12 @@ func (w *Watcher) Close() {
 // WriteStatusLog writes a message to the status log
 // The output destination is determined by the app's StatusLog configuration.
 func (w *Watcher) WriteStatusLog(msgType, message string) {
-	if w.app == nil {
+	if w.app == nil || w.app.statusLogFD == nil {
 		return
 	}
 
 	timestamp := time.Now().Format("15:04:05")
 	logLine := fmt.Sprintf("[%s] %s(%s): %s\n", timestamp, w.Root, msgType, message)
-
-	switch w.app.StatusLog.Type {
-	case "stdout":
-		fmt.Fprint(os.Stdout, logLine)
-	case "stderr":
-		fmt.Fprint(os.Stderr, logLine)
-	case "file":
-		if w.app.statusLogFD != nil {
-			fmt.Fprint(w.app.statusLogFD, logLine)
-		}
-	case "null":
-		// Do nothing
-	}
+	fmt.Fprintf(w.app.statusLogFD, logLine)
 }
+

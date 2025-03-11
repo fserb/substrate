@@ -67,11 +67,16 @@ func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) 
 				}
 				app.Env[envKey] = envValue
 			case "status_log":
-				target, err := parseRedirectGlobal(d)
-				if err != nil {
-					return nil, err
+				if !d.NextArg() {
+					return nil, d.ArgErr()
 				}
-				app.StatusLog = *target
+				app.StatusLog.Type = d.Val()
+				if app.StatusLog.Type == "file" {
+					if !d.NextArg() {
+						return nil, d.ArgErr()
+					}
+					app.StatusLog.File = d.Val()
+				}
 			}
 		}
 	}
@@ -80,30 +85,6 @@ func parseGlobalSubstrate(d *caddyfile.Dispenser, existingVal any) (any, error) 
 		Name:  "substrate",
 		Value: caddyconfig.JSON(app, nil),
 	}, nil
-}
-
-// parseRedirectGlobal parses the status_log directive configuration.
-// It supports "stdout", "stderr", "null", and "file" output targets.
-func parseRedirectGlobal(d *caddyfile.Dispenser) (*outputTarget, error) {
-	if !d.NextArg() {
-		return nil, d.ArgErr()
-	}
-
-	var target outputTarget
-	target.Type = d.Val()
-
-	switch target.Type {
-	case "stdout", "null", "stderr":
-		return &target, nil
-	case "file":
-		if !d.NextArg() {
-			return nil, d.ArgErr()
-		}
-		target.File = d.Val()
-		return &target, nil
-	}
-
-	return nil, fmt.Errorf("Invalid redirect target: %s", target.Type)
 }
 
 func (h App) CaddyModule() caddy.ModuleInfo {
@@ -136,9 +117,15 @@ func (h *App) Start() error {
 
 // initStatusLog initializes the status log based on the configured target.
 func (h *App) initStatusLog() error {
+	h.log.Info("Initializing status log", zap.String("type", h.StatusLog.Type))
+
 	switch h.StatusLog.Type {
-	case "stdout", "stderr", "null":
-		return nil
+	case "stdout":
+		h.statusLogFD = os.Stdout
+	case "stderr":
+		h.statusLogFD = os.Stderr
+	case "null":
+		h.statusLogFD = nil
 	case "file":
 		if h.StatusLog.File == "" {
 			return fmt.Errorf("status_log file path is empty")
@@ -149,13 +136,15 @@ func (h *App) initStatusLog() error {
 			return fmt.Errorf("failed to open status log file: %w", err)
 		}
 		h.statusLogFD = f
-
-		timestamp := time.Now().Format(time.RFC3339)
-		fmt.Fprintf(f, "=== Substrate Status Log Started at %s ===\n", timestamp)
-		return nil
-	default:
-		return fmt.Errorf("invalid status log type: %s", h.StatusLog.Type)
 	}
+
+	if h.statusLogFD == nil {
+		return nil
+	}
+
+	timestamp := time.Now().Format(time.RFC3339)
+	fmt.Fprintf(h.statusLogFD, "=== Substrate Status Log Started at %s ===\n", timestamp)
+	return nil
 }
 
 // Stop gracefully shuts down the substrate app.
@@ -198,3 +187,4 @@ func (h *App) GetWatcher(root string) *Watcher {
 	h.watchers[root] = watcher
 	return watcher
 }
+
