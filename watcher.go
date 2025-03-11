@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"path"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -35,6 +36,8 @@ type Watcher struct {
 	app         *App               // Reference to the parent App
 	isReady     chan struct{}      // Channel to signal when the substrate process is ready
 	statusCache *lru.Cache[string, bool]
+	readyMutex  sync.Mutex // Mutex to protect isReady channel operations
+	cmdMutex    sync.Mutex // Mutex to protect cmd field access
 }
 
 // updateWatcher configures the watcher based on whether the substrate file exists.
@@ -158,9 +161,11 @@ func (w *Watcher) watch(ctx context.Context) {
 			w.statusCache.Purge()
 			w.setNotReady()
 			debounceTimer.Reset(debounceDelay)
+			w.cmdMutex.Lock()
 			if w.cmd == nil {
 				w.cmd = &execCmd{}
 			}
+			w.cmdMutex.Unlock()
 
 		case err, ok := <-watcher.Errors:
 			if !ok {
@@ -186,6 +191,9 @@ func (w *Watcher) watch(ctx context.Context) {
 }
 
 func (w *Watcher) stopCommand() {
+	w.cmdMutex.Lock()
+	defer w.cmdMutex.Unlock()
+
 	if w.cmd != nil {
 		w.log.Info("Stopping existing substrate process")
 		w.WriteStatusLog("A", "Stopping existing substrate process")
@@ -262,14 +270,22 @@ func (w *Watcher) startLoading() {
 
 	w.setNotReady()
 	w.stopCommand()
+
+	w.cmdMutex.Lock()
 	w.cmd = cmd
 	w.statusCache.Purge()
-	go w.cmd.Run()
+	currentCmd := w.cmd
+	w.cmdMutex.Unlock()
 
+	go currentCmd.Run()
+
+	w.cmdMutex.Lock()
 	if w.cmd == nil {
+		w.cmdMutex.Unlock()
 		w.setIsReady()
 		return
 	}
+	w.cmdMutex.Unlock()
 
 	server := fmt.Sprintf("localhost:%d", w.Port)
 
@@ -293,6 +309,9 @@ func (w *Watcher) startLoading() {
 }
 
 func (w *Watcher) setNotReady() {
+	w.readyMutex.Lock()
+	defer w.readyMutex.Unlock()
+
 	if w.isReady != nil {
 		select {
 		case _, ok := <-w.isReady:
@@ -308,9 +327,13 @@ func (w *Watcher) setNotReady() {
 }
 
 func (w *Watcher) setIsReady() {
+	w.readyMutex.Lock()
+	defer w.readyMutex.Unlock()
+
 	if w.isReady != nil {
 		select {
 		case <-w.isReady:
+			// Channel is already closed or has a value
 		default:
 			close(w.isReady)
 		}

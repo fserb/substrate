@@ -168,6 +168,9 @@ func (h *App) Stop() error {
 // GetWatcher retrieves an existing watcher for the given root directory
 // or creates a new one if it doesn't exist.
 func (h *App) GetWatcher(root string) *Watcher {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
 	got, ok := h.watchers[root]
 	if ok {
 		return got
