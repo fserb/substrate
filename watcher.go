@@ -309,7 +309,11 @@ func (w *Watcher) setNotReady() {
 
 func (w *Watcher) setIsReady() {
 	if w.isReady != nil {
-		close(w.isReady)
+		select {
+		case <-w.isReady:
+		default:
+			close(w.isReady)
+		}
 	}
 }
 
@@ -336,4 +340,3 @@ func (w *Watcher) WriteStatusLog(msgType, message string) {
 	logLine := fmt.Sprintf("[%s] %s(%s): %s\n", timestamp, w.Root, msgType, message)
 	fmt.Fprintf(w.app.statusLogFD, logLine)
 }
-

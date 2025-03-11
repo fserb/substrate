@@ -187,4 +187,3 @@ func (h *App) GetWatcher(root string) *Watcher {
 	h.watchers[root] = watcher
 	return watcher
 }
-
