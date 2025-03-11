@@ -1,14 +1,14 @@
 {
 	admin localhost:2020
-	substrate
+	substrate {
+    status_log x.log
+  }
 }
 
 :4321 {
 	root example/
 
-	substrate {
-		command deno run -A example/example.js
-	}
+	substrate
 
 	file_server
 }
