@@ -1,15 +1,25 @@
 {
 	admin localhost:2020
-	substrate {
-    status_log x.log
-  }
 }
 
 :4321 {
 	root example/
+	
+	# Example: Route .js files through substrate transport
+	@js_files {
+		path *.js
+		file {path}
+	}
+	reverse_proxy @js_files {
+		header_up X-File-Path {http.matchers.file.absolute}
+		transport substrate {
+			idle_timeout 5m
+			startup_timeout 30s
+		}
+		to localhost:8080
+	}
 
-	substrate
-
+	# Fallback to file server for static files
 	file_server
 }
 

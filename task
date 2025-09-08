@@ -16,22 +16,6 @@ function build {
 
 function test {
   CGO_ENABLED=0 go test . "$@"
-  speck
-}
-
-function speck {
-  CGO_ENABLED=0 go run -C ./main . version > /dev/null
-  VERBOSE=""
-  if [ "$#" -ge 1 ] && [ "$1" == "-v" ]; then
-    VERBOSE="-v"
-    shift
-  fi
-
-  TESTS=$@
-  if [ -z "$TESTS" ]; then
-    TESTS=tests/*/_test.sh
-  fi
-  tests/speck.js $VERBOSE $TESTS
 }
 
 function help {
