@@ -1,5 +1,0 @@
-#!/usr/bin/env -S deno run -A
-
-const PORT = Number(Deno.args[0]) ?? 8723;
-Deno.serve({ port: PORT }, () => new Response("INVALID\n"));
-
