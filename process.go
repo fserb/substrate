@@ -189,7 +189,7 @@ func (pm *ProcessManager) Stop() error {
 func (pm *ProcessManager) cleanupLoop() {
 	defer pm.wg.Done()
 
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 
 	for {

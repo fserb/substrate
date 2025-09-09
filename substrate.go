@@ -30,7 +30,7 @@ func (SubstrateTransport) CaddyModule() caddy.ModuleInfo {
 		ID: "http.reverse_proxy.transport.substrate",
 		New: func() caddy.Module {
 			return &SubstrateTransport{
-				IdleTimeout:    caddy.Duration(5 * time.Minute),
+				IdleTimeout:    caddy.Duration(1 * time.Hour),
 				StartupTimeout: caddy.Duration(30 * time.Second),
 			}
 		},

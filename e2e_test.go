@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -360,19 +361,8 @@ func getTestScript(t *testing.T, filename string) string {
 }
 
 func isDenoAvailable() bool {
-	// Check common Deno installation paths
-	paths := []string{
-		"/usr/local/bin/deno",
-		"/opt/homebrew/bin/deno",
-		"/usr/bin/deno",
-	}
-
-	for _, path := range paths {
-		if _, err := os.Stat(path); err == nil {
-			return true
-		}
-	}
-
-	return false
+	cmd := exec.Command("deno", "--version")
+	err := cmd.Run()
+	return err == nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -119,28 +120,33 @@ func TestSubstrateTransport_GetOrStartProcess_Integration(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create a simple Node.js script that starts an HTTP server
-	scriptContent := `#!/usr/bin/env node
-const http = require('http');
+	// Create a simple Deno script that starts an HTTP server
+	scriptContent := `#!/usr/bin/env -S deno run --allow-net
+// Simple HTTP server for testing substrate transport
 
-// Get host and port from command line arguments
-const host = process.argv[2] || 'localhost';
-const port = parseInt(process.argv[3]) || 8080;
+const [host, port] = Deno.args;
 
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Hello from substrate process!');
+if (!host || !port) {
+  console.error("Usage: test-server.js <host> <port>");
+  Deno.exit(1);
+}
+
+const server = Deno.serve({ 
+  hostname: host === "localhost" ? "127.0.0.1" : host, 
+  port: parseInt(port) 
+}, (req) => {
+  return new Response("Hello from substrate process!", {
+    headers: { "Content-Type": "text/plain" }
+  });
 });
 
-server.listen(port, host, () => {
-  console.log(` + "`Server running at http://${host}:${port}/`" + `);
-});
+console.log(` + "`Server running at http://${host}:${port}/`" + `);
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  server.close(() => {
-    process.exit(0);
-  });
+Deno.addSignalListener("SIGTERM", () => {
+  console.log("Received SIGTERM, shutting down gracefully");
+  server.shutdown();
+  Deno.exit(0);
 });
 `
 
@@ -150,11 +156,9 @@ process.on('SIGTERM', () => {
 		t.Fatalf("Failed to write test script: %v", err)
 	}
 
-	// Check if Node.js is available
-	if _, err := os.Stat("/usr/bin/node"); os.IsNotExist(err) {
-		if _, err := os.Stat("/usr/local/bin/node"); os.IsNotExist(err) {
-			t.Skip("Node.js not found, skipping integration test")
-		}
+	// Check if Deno is available
+	if !isDenoAvailable() {
+		t.Skip("Deno not available, skipping integration test")
 	}
 
 	// Setup transport
@@ -260,4 +264,10 @@ func TestSubstrateTransport_Validate(t *testing.T) {
 	if err == nil {
 		t.Error("Validate should return error for invalid transport")
 	}
+}
+
+func isDenoAvailable() bool {
+	cmd := exec.Command("deno", "--version")
+	err := cmd.Run()
+	return err == nil
 }
