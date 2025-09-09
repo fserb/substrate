@@ -59,11 +59,10 @@ func TestSubstrateTransport_Provision(t *testing.T) {
 	}
 }
 
-
 func TestSubstrateTransport_GetFilePathFromReplacer(t *testing.T) {
 	// Create a request with context and replacer
 	req := httptest.NewRequest("GET", "/hello.js", nil)
-	
+
 	// Create a replacer and set file.absolute value
 	repl := caddy.NewReplacer()
 	repl.Set("http.matchers.file.absolute", "/absolute/path/to/hello.js")
@@ -73,7 +72,7 @@ func TestSubstrateTransport_GetFilePathFromReplacer(t *testing.T) {
 	// Test getting file path from replacer
 	repl2 := req.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 	filePath, _ := repl2.GetString("http.matchers.file.absolute")
-	
+
 	expected := "/absolute/path/to/hello.js"
 	if filePath != expected {
 		t.Errorf("Expected file path %s, got %s", expected, filePath)
@@ -83,7 +82,7 @@ func TestSubstrateTransport_GetFilePathFromReplacer(t *testing.T) {
 func TestSubstrateTransport_GetFilePathFallback(t *testing.T) {
 	// Create a request with context and replacer but no file.absolute value
 	req := httptest.NewRequest("GET", "/hello.js", nil)
-	
+
 	// Create a replacer without setting file.absolute value
 	repl := caddy.NewReplacer()
 	ctx := context.WithValue(req.Context(), caddy.ReplacerCtxKey, repl)
@@ -92,12 +91,12 @@ func TestSubstrateTransport_GetFilePathFallback(t *testing.T) {
 	// Test that it falls back to URL path when no file.absolute is set
 	repl2 := req.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 	filePath, _ := repl2.GetString("http.matchers.file.absolute")
-	
+
 	// Should be empty since we didn't set it
 	if filePath != "" {
 		t.Errorf("Expected empty file path, got %s", filePath)
 	}
-	
+
 	// Fallback should be the URL path
 	fallbackPath := req.URL.Path
 	expected := "/hello.js"
@@ -105,7 +104,6 @@ func TestSubstrateTransport_GetFilePathFallback(t *testing.T) {
 		t.Errorf("Expected fallback path %s, got %s", expected, fallbackPath)
 	}
 }
-
 
 func TestSubstrateTransport_GetOrStartProcess_Integration(t *testing.T) {
 	// Skip integration test if running in short mode
@@ -213,7 +211,6 @@ Deno.addSignalListener("SIGTERM", () => {
 	}
 }
 
-
 func TestSubstrateTransport_Cleanup(t *testing.T) {
 	transport := &SubstrateTransport{
 		IdleTimeout:    caddy.Duration(60 * time.Second),
@@ -253,13 +250,13 @@ func TestSubstrateTransport_Validate(t *testing.T) {
 	if err != nil {
 		t.Errorf("Validate should not return error for valid transport, got: %v", err)
 	}
-	
+
 	// Test invalid configurations
 	invalidTransport := &SubstrateTransport{
 		IdleTimeout:    caddy.Duration(-1 * time.Second),
 		StartupTimeout: caddy.Duration(0),
 	}
-	
+
 	err = invalidTransport.Validate()
 	if err == nil {
 		t.Error("Validate should return error for invalid transport")

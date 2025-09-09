@@ -24,7 +24,6 @@ type SubstrateTransport struct {
 	logger    *zap.Logger
 }
 
-
 func (SubstrateTransport) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
 		ID: "http.reverse_proxy.transport.substrate",
@@ -65,15 +64,15 @@ func (t *SubstrateTransport) Validate() error {
 	if t.IdleTimeout < 0 {
 		return fmt.Errorf("idle_timeout cannot be negative")
 	}
-	
+
 	if t.StartupTimeout < 0 {
 		return fmt.Errorf("startup_timeout cannot be negative")
 	}
-	
+
 	if t.StartupTimeout == 0 {
 		return fmt.Errorf("startup_timeout cannot be zero")
 	}
-	
+
 	if t.StartupTimeout > caddy.Duration(5*time.Minute) {
 		return fmt.Errorf("startup_timeout is very long (%v), this seems unusual", time.Duration(t.StartupTimeout))
 	}
@@ -90,7 +89,7 @@ func (t *SubstrateTransport) Cleanup() error {
 
 func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	repl := req.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
-	
+
 	filePath, _ := repl.GetString("http.matchers.file.absolute")
 	if filePath == "" {
 		filePath = req.URL.Path
@@ -114,13 +113,10 @@ func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error
 	return resp, nil
 }
 
-
-
-
 var (
-	_ caddy.Module           = (*SubstrateTransport)(nil)
-	_ caddy.Provisioner      = (*SubstrateTransport)(nil)
-	_ caddy.Validator        = (*SubstrateTransport)(nil)
-	_ caddy.CleanerUpper     = (*SubstrateTransport)(nil)
-	_ http.RoundTripper      = (*SubstrateTransport)(nil)
+	_ caddy.Module       = (*SubstrateTransport)(nil)
+	_ caddy.Provisioner  = (*SubstrateTransport)(nil)
+	_ caddy.Validator    = (*SubstrateTransport)(nil)
+	_ caddy.CleanerUpper = (*SubstrateTransport)(nil)
+	_ http.RoundTripper  = (*SubstrateTransport)(nil)
 )

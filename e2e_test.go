@@ -440,5 +440,3 @@ func getTestScript(t *testing.T, filename string) string {
 
 	return scriptPath
 }
-
-

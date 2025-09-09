@@ -63,5 +63,3 @@ func configureProcessSecurity(cmd *exec.Cmd, filePath string) error {
 
 	return nil
 }
-
-

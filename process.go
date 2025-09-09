@@ -409,4 +409,3 @@ func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.D
 		}
 	}
 }
-

@@ -23,7 +23,6 @@ func TestProcessManager_GetOrCreateHost(t *testing.T) {
 	}
 	defer pm.Stop()
 
-
 	filePath := "/bin/echo"
 	hostPort, err := pm.getOrCreateHost(filePath)
 	if err != nil {
@@ -88,7 +87,7 @@ func TestProcessManager_DifferentFiles(t *testing.T) {
 	}
 	defer pm.Stop()
 
-	// Test that calling getOrCreateHost twice for same file 
+	// Test that calling getOrCreateHost twice for same file
 	// Since sleep exits immediately with no args, we'll test the creation behavior
 	file := "/bin/sleep"
 
@@ -187,7 +186,7 @@ func TestValidateFilePath(t *testing.T) {
 func TestProcessManager_GetOrCreateHost_FileValidation(t *testing.T) {
 	logger := zap.NewNop()
 	pm, err := NewProcessManager(
-		caddy.Duration(time.Minute),        // idle timeout
+		caddy.Duration(time.Minute),          // idle timeout
 		caddy.Duration(100*time.Millisecond), // startup timeout
 		logger,
 	)
@@ -223,7 +222,7 @@ func TestProcess_CrashDetection(t *testing.T) {
 	process := &Process{
 		Command:  "sh",
 		Host:     "localhost",
-		Port:     12346, 
+		Port:     12346,
 		LastUsed: time.Now(),
 		onExit:   func() {},
 		logger:   logger,
@@ -259,7 +258,7 @@ func TestProcess_CrashDetection(t *testing.T) {
 func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 	logger := zap.NewNop()
 	pm, err := NewProcessManager(
-		caddy.Duration(time.Minute),        // idle timeout
+		caddy.Duration(time.Minute),          // idle timeout
 		caddy.Duration(100*time.Millisecond), // startup timeout
 		logger,
 	)
@@ -300,7 +299,7 @@ func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 		pm.mu.RLock()
 		_, stillExists := pm.processes[exitScript]
 		pm.mu.RUnlock()
-		
+
 		if !stillExists {
 			break // Process was cleaned up
 		}
@@ -325,7 +324,7 @@ func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 func TestProcessManager_NormalExitCleanup(t *testing.T) {
 	logger := zap.NewNop()
 	pm, err := NewProcessManager(
-		caddy.Duration(time.Minute),        // idle timeout
+		caddy.Duration(time.Minute),          // idle timeout
 		caddy.Duration(100*time.Millisecond), // startup timeout
 		logger,
 	)
@@ -417,7 +416,7 @@ func TestProcess_NormalExitLogging(t *testing.T) {
 func TestValidateFilePath_Symlink(t *testing.T) {
 	// Create a temporary directory
 	tmpDir := t.TempDir()
-	
+
 	// Create a valid executable file
 	realFile := filepath.Join(tmpDir, "test.sh")
 	err := os.WriteFile(realFile, []byte("#!/bin/bash\necho hello"), 0755)
@@ -485,7 +484,7 @@ func TestProcessManager_GetOrCreateHost_Symlink(t *testing.T) {
 
 	// Create a temporary directory
 	tmpDir := t.TempDir()
-	
+
 	// Create a valid executable script
 	realScript := filepath.Join(tmpDir, "test_script.sh")
 	scriptContent := "#!/bin/bash\necho 'test output'"
@@ -520,4 +519,3 @@ func TestProcessManager_GetOrCreateHost_Symlink(t *testing.T) {
 		t.Error("Process should exist in manager for symlinked script path")
 	}
 }
-

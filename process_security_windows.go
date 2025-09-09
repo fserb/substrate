@@ -14,4 +14,3 @@ func configureProcessSecurity(cmd *exec.Cmd, filePath string) error {
 	// Process security is managed through Access Control Lists (ACLs)
 	return nil
 }
-
