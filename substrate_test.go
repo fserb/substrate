@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -35,8 +34,8 @@ func TestSubstrateTransport_CaddyModule(t *testing.T) {
 
 func TestSubstrateTransport_Provision(t *testing.T) {
 	transport := &SubstrateTransport{
-		IdleTimeout:    caddy.Duration(300000000000), // 5 minutes
-		StartupTimeout: caddy.Duration(30000000000),  // 30 seconds
+		IdleTimeout:    caddy.Duration(5 * time.Minute),
+		StartupTimeout: caddy.Duration(30 * time.Second),
 	}
 
 	// Create a basic context with a logger
@@ -125,9 +124,9 @@ if (!host || !port) {
   Deno.exit(1);
 }
 
-const server = Deno.serve({ 
-  hostname: host === "localhost" ? "127.0.0.1" : host, 
-  port: parseInt(port) 
+const server = Deno.serve({
+  hostname: host === "localhost" ? "127.0.0.1" : host,
+  port: parseInt(port)
 }, (req) => {
   return new Response("Hello from substrate process!", {
     headers: { "Content-Type": "text/plain" }
@@ -150,10 +149,6 @@ Deno.addSignalListener("SIGTERM", () => {
 		t.Fatalf("Failed to write test script: %v", err)
 	}
 
-	// Check if Deno is available
-	if !isDenoAvailable() {
-		t.Skip("Deno not available, skipping integration test")
-	}
 
 	// Setup transport
 	transport := &SubstrateTransport{
@@ -257,8 +252,4 @@ func TestSubstrateTransport_Validate(t *testing.T) {
 	}
 }
 
-func isDenoAvailable() bool {
-	cmd := exec.Command("deno", "--version")
-	err := cmd.Run()
-	return err == nil
-}
+

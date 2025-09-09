@@ -21,10 +21,6 @@ func TestE2E_SimpleServerStartup(t *testing.T) {
 		t.Skip("Skipping E2E test in short mode")
 	}
 
-	// Check if Deno is available
-	if !isDenoAvailable() {
-		t.Skip("Deno not available, skipping E2E test")
-	}
 
 	transport := setupTestTransport(t)
 	defer transport.Cleanup()
@@ -69,9 +65,6 @@ func TestE2E_MultipleProcesses(t *testing.T) {
 		t.Skip("Skipping E2E test in short mode")
 	}
 
-	if !isDenoAvailable() {
-		t.Skip("Deno not available, skipping E2E test")
-	}
 
 	transport := setupTestTransport(t)
 	defer transport.Cleanup()
@@ -122,9 +115,6 @@ func TestE2E_ProcessReuse(t *testing.T) {
 		t.Skip("Skipping E2E test in short mode")
 	}
 
-	if !isDenoAvailable() {
-		t.Skip("Deno not available, skipping E2E test")
-	}
 
 	transport := setupTestTransport(t)
 	defer transport.Cleanup()
@@ -164,9 +154,6 @@ func TestE2E_SlowStartup(t *testing.T) {
 		t.Skip("Skipping E2E test in short mode")
 	}
 
-	if !isDenoAvailable() {
-		t.Skip("Deno not available, skipping E2E test")
-	}
 
 	// Use shorter startup timeout for this test
 	transport := &SubstrateTransport{
@@ -213,9 +200,6 @@ func TestE2E_EchoServer(t *testing.T) {
 		t.Skip("Skipping E2E test in short mode")
 	}
 
-	if !isDenoAvailable() {
-		t.Skip("Deno not available, skipping E2E test")
-	}
 
 	transport := setupTestTransport(t)
 	defer transport.Cleanup()
@@ -276,9 +260,6 @@ func TestE2E_ProcessCleanup(t *testing.T) {
 		t.Skip("Skipping E2E test in short mode")
 	}
 
-	if !isDenoAvailable() {
-		t.Skip("Deno not available, skipping E2E test")
-	}
 
 	transport := setupTestTransport(t)
 
@@ -329,9 +310,6 @@ func TestE2E_SymlinkExecution(t *testing.T) {
 		t.Skip("Skipping E2E test in short mode")
 	}
 
-	if !isDenoAvailable() {
-		t.Skip("Deno not available, skipping E2E test")
-	}
 
 	transport := setupTestTransport(t)
 	defer transport.Cleanup()
@@ -435,3 +413,4 @@ func getTestScript(t *testing.T, filename string) string {
 
 	return scriptPath
 }
+
