@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -329,6 +328,88 @@ func TestE2E_ProcessCleanup(t *testing.T) {
 	}
 }
 
+func TestE2E_SymlinkExecution(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping E2E test in short mode")
+	}
+
+	if !isDenoAvailable() {
+		t.Skip("Deno not available, skipping E2E test")
+	}
+
+	transport := setupTestTransport(t)
+	defer transport.Cleanup()
+
+	// Get the original test script
+	originalScript := getTestScript(t, "simple_server.js")
+
+	// Create a temporary directory for the symlink
+	tempDir, err := os.MkdirTemp("", "substrate-symlink-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create a symlink to the original script
+	symlinkPath := filepath.Join(tempDir, "symlinked_server.js")
+	err = os.Symlink(originalScript, symlinkPath)
+	if err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
+	}
+
+	// Test getOrCreateHost with symlinked script
+	hostPort, err := transport.manager.getOrCreateHost(symlinkPath)
+	if err != nil {
+		t.Fatalf("Failed to get host:port for symlinked script: %v", err)
+	}
+
+	if !strings.Contains(hostPort, "localhost:") {
+		t.Errorf("Expected host:port to contain localhost:, got %s", hostPort)
+	}
+
+	// Wait for server to start
+	time.Sleep(2 * time.Second)
+
+	// Make HTTP request to verify server is running and functioning correctly
+	resp, err := http.Get(fmt.Sprintf("http://%s/test", hostPort))
+	if err != nil {
+		t.Fatalf("Failed to connect to symlinked server: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "Hello from substrate process") {
+		t.Errorf("Response body should contain expected text from symlinked script, got: %s", bodyStr)
+	}
+
+	// Verify the process is tracked under the symlink path, not the resolved path
+	transport.manager.mu.RLock()
+	_, exists := transport.manager.processes[symlinkPath]
+	transport.manager.mu.RUnlock()
+
+	if !exists {
+		t.Error("Process should be tracked under symlink path")
+	}
+
+	// Verify original script path is not used as key
+	transport.manager.mu.RLock()
+	_, originalExists := transport.manager.processes[originalScript]
+	transport.manager.mu.RUnlock()
+
+	if originalExists {
+		t.Error("Process should not be tracked under original script path when accessed via symlink")
+	}
+}
+
 // Helper functions
 
 func setupTestTransport(t *testing.T) *SubstrateTransport {
@@ -360,9 +441,4 @@ func getTestScript(t *testing.T, filename string) string {
 	return scriptPath
 }
 
-func isDenoAvailable() bool {
-	cmd := exec.Command("deno", "--version")
-	err := cmd.Run()
-	return err == nil
-}
 

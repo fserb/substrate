@@ -414,3 +414,110 @@ func TestProcess_NormalExitLogging(t *testing.T) {
 	}
 }
 
+func TestValidateFilePath_Symlink(t *testing.T) {
+	// Create a temporary directory
+	tmpDir := t.TempDir()
+	
+	// Create a valid executable file
+	realFile := filepath.Join(tmpDir, "test.sh")
+	err := os.WriteFile(realFile, []byte("#!/bin/bash\necho hello"), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Create a symlink to the executable file
+	symlinkPath := filepath.Join(tmpDir, "test_symlink.sh")
+	err = os.Symlink(realFile, symlinkPath)
+	if err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
+	}
+
+	// Test that symlink to valid executable passes validation
+	err = validateFilePath(symlinkPath)
+	if err != nil {
+		t.Errorf("Symlink to executable should pass validation: %v", err)
+	}
+
+	// Create a broken symlink
+	brokenSymlink := filepath.Join(tmpDir, "broken_symlink.sh")
+	err = os.Symlink("/nonexistent/target", brokenSymlink)
+	if err != nil {
+		t.Fatalf("Failed to create broken symlink: %v", err)
+	}
+
+	// Test that broken symlink fails validation
+	err = validateFilePath(brokenSymlink)
+	if err == nil {
+		t.Error("Broken symlink should fail validation")
+	}
+
+	// Create a symlink to a non-executable file
+	nonExecFile := filepath.Join(tmpDir, "nonexec.txt")
+	err = os.WriteFile(nonExecFile, []byte("content"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create non-executable file: %v", err)
+	}
+
+	nonExecSymlink := filepath.Join(tmpDir, "nonexec_symlink.txt")
+	err = os.Symlink(nonExecFile, nonExecSymlink)
+	if err != nil {
+		t.Fatalf("Failed to create symlink to non-executable: %v", err)
+	}
+
+	// Test that symlink to non-executable passes validateFilePath (executable check happens later)
+	err = validateFilePath(nonExecSymlink)
+	if err != nil {
+		t.Errorf("Symlink to non-executable should pass validateFilePath: %v", err)
+	}
+}
+
+func TestProcessManager_GetOrCreateHost_Symlink(t *testing.T) {
+	logger := zap.NewNop()
+	pm, err := NewProcessManager(
+		caddy.Duration(time.Minute),
+		caddy.Duration(100*time.Millisecond),
+		logger,
+	)
+	if err != nil {
+		t.Fatalf("Failed to create process manager: %v", err)
+	}
+	defer pm.Stop()
+
+	// Create a temporary directory
+	tmpDir := t.TempDir()
+	
+	// Create a valid executable script
+	realScript := filepath.Join(tmpDir, "test_script.sh")
+	scriptContent := "#!/bin/bash\necho 'test output'"
+	err = os.WriteFile(realScript, []byte(scriptContent), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create test script: %v", err)
+	}
+
+	// Create a symlink to the script
+	symlinkPath := filepath.Join(tmpDir, "symlinked_script.sh")
+	err = os.Symlink(realScript, symlinkPath)
+	if err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
+	}
+
+	// Test that process manager can handle symlinked scripts
+	hostPort, err := pm.getOrCreateHost(symlinkPath)
+	if err != nil {
+		t.Fatalf("Failed to get host:port for symlinked script: %v", err)
+	}
+
+	if hostPort == "" {
+		t.Error("Host:port should not be empty for symlinked script")
+	}
+
+	// Verify the process was created and stored under the symlink path (not resolved path)
+	pm.mu.RLock()
+	_, exists := pm.processes[symlinkPath]
+	pm.mu.RUnlock()
+
+	if !exists {
+		t.Error("Process should exist in manager for symlinked script path")
+	}
+}
+
