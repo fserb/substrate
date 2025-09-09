@@ -195,7 +195,7 @@ Deno.addSignalListener("SIGTERM", () => {
 	}
 
 	// Wait a moment for the server to start
-	time.Sleep(2 * time.Second)
+	time.Sleep(200 * time.Millisecond)
 
 	// Try to make an HTTP request to the started process (optional verification)
 	testURL := fmt.Sprintf("http://%s/", hostPort)

@@ -42,7 +42,7 @@ func TestE2E_SimpleServerStartup(t *testing.T) {
 	}
 
 	// Wait for server to start
-	time.Sleep(2 * time.Second)
+	time.Sleep(200 * time.Millisecond)
 
 	// Make HTTP request to verify server is running
 	resp, err := http.Get(fmt.Sprintf("http://%s/test", hostPort))
@@ -102,7 +102,7 @@ func TestE2E_MultipleProcesses(t *testing.T) {
 	}
 
 	// Wait for servers to start
-	time.Sleep(3 * time.Second)
+	time.Sleep(300 * time.Millisecond)
 
 	// Test that all servers are responding
 	for i, hostPort := range hostPorts {
@@ -198,7 +198,7 @@ func TestE2E_SlowStartup(t *testing.T) {
 	}
 
 	// Wait a bit more and verify server is accessible
-	time.Sleep(1 * time.Second)
+	time.Sleep(100 * time.Millisecond)
 	resp, err := http.Get(fmt.Sprintf("http://%s/", hostPort))
 	if err != nil {
 		t.Fatalf("Failed to connect to slow startup server: %v", err)
@@ -230,7 +230,7 @@ func TestE2E_EchoServer(t *testing.T) {
 	}
 
 	// Wait for server to start
-	time.Sleep(2 * time.Second)
+	time.Sleep(200 * time.Millisecond)
 
 	// Test POST request with body and headers
 	reqBody := `{"test": "data"}`
@@ -293,7 +293,7 @@ func TestE2E_ProcessCleanup(t *testing.T) {
 	}
 
 	// Wait for server to start
-	time.Sleep(2 * time.Second)
+	time.Sleep(200 * time.Millisecond)
 
 	// Verify server is running
 	resp, err := http.Get(fmt.Sprintf("http://%s/", hostPort))
@@ -318,7 +318,7 @@ func TestE2E_ProcessCleanup(t *testing.T) {
 	}
 
 	// Wait a moment for cleanup to complete
-	time.Sleep(1 * time.Second)
+	time.Sleep(100 * time.Millisecond)
 
 	// Verify server is no longer accessible
 	client := &http.Client{Timeout: 1 * time.Second}
@@ -368,7 +368,7 @@ func TestE2E_SymlinkExecution(t *testing.T) {
 	}
 
 	// Wait for server to start
-	time.Sleep(2 * time.Second)
+	time.Sleep(200 * time.Millisecond)
 
 	// Make HTTP request to verify server is running and functioning correctly
 	resp, err := http.Get(fmt.Sprintf("http://%s/test", hostPort))
