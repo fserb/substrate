@@ -85,60 +85,94 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 		return fmt.Sprintf("%s:%d", info.Host, info.Port), nil
 	}
 
-	// Get a free port
-	port, err := getFreePort()
-	if err != nil {
-		return "", fmt.Errorf("failed to get free port: %w", err)
-	}
-
 	host := "localhost"
+	maxRetries := 3
 
-	// Create process config
-	config := ProcessConfig{
-		Command: file,
-		Args:    []string{host, fmt.Sprintf("%d", port)},
-	}
+	// Retry loop to handle port allocation race conditions
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// Get a free port
+		port, err := getFreePort()
+		if err != nil {
+			return "", fmt.Errorf("failed to get free port: %w", err)
+		}
 
-	// Create new managed process
-	process := &ManagedProcess{
-		Key:      file,
-		Config:   config,
-		LastUsed: time.Now(),
-		running:  false,
-		logger:   pm.config.Logger,
-	}
+		// Create process config
+		config := ProcessConfig{
+			Command: file,
+			Args:    []string{host, fmt.Sprintf("%d", port)},
+		}
 
-	// Start the process
-	if err := process.start(); err != nil {
-		return "", fmt.Errorf("failed to start process: %w", err)
-	}
+		// Create new managed process
+		process := &ManagedProcess{
+			Key:      file,
+			Config:   config,
+			LastUsed: time.Now(),
+			running:  false,
+			logger:   pm.config.Logger,
+		}
 
-	// Store the process info
-	info := &ProcessInfo{
-		Process: process,
-		Host:    host,
-		Port:    port,
-	}
-	pm.processes[file] = info
+		// Start the process
+		if err := process.start(); err != nil {
+			// Process failed to start - check if it's due to port conflict
+			if pm.isPortInUse(host, port) {
+				pm.config.Logger.Warn("port race condition detected during process start, retrying",
+					zap.Int("attempt", attempt),
+					zap.Int("port", port),
+					zap.String("file", file),
+				)
+				if attempt < maxRetries {
+					continue // retry with new port
+				}
+			}
+			// Not a port race or max retries reached
+			return "", fmt.Errorf("failed to start process after %d attempts: %w", attempt, err)
+		}
 
-	pm.config.Logger.Info("started process",
-		zap.String("file", file),
-		zap.String("host:port", fmt.Sprintf("%s:%d", host, port)),
-		zap.Int("pid", process.Cmd.Process.Pid),
-	)
+		// Store the process info
+		info := &ProcessInfo{
+			Process: process,
+			Host:    host,
+			Port:    port,
+		}
+		pm.processes[file] = info
 
-	// Wait for the process to be ready to accept connections
-	// If this fails, we still return the host:port but log a warning
-	// This allows backward compatibility with processes that might not start HTTP servers immediately
-	if err := pm.waitForPortReady(host, port, time.Duration(pm.config.StartupTimeout)); err != nil {
-		pm.config.Logger.Warn("process may not be ready to accept connections",
+		pm.config.Logger.Info("started process",
 			zap.String("file", file),
 			zap.String("host:port", fmt.Sprintf("%s:%d", host, port)),
-			zap.Error(err),
+			zap.Int("pid", process.Cmd.Process.Pid),
+			zap.Int("attempt", attempt),
 		)
+
+		// Wait for the process to be ready to accept connections
+		if err := pm.waitForPortReady(host, port, time.Duration(pm.config.StartupTimeout)); err != nil {
+			// Check if someone else grabbed the port after our process started
+			if pm.isPortInUse(host, port) {
+				pm.config.Logger.Warn("port stolen after process start, retrying",
+					zap.Int("attempt", attempt),
+					zap.Int("port", port),
+					zap.String("file", file),
+				)
+				process.Stop() // cleanup failed process
+				delete(pm.processes, file)
+				if attempt < maxRetries {
+					continue // retry with new port
+				}
+				return "", fmt.Errorf("port conflicts persist after %d attempts", maxRetries)
+			}
+			// Process started but isn't listening - warn but continue for backward compatibility
+			pm.config.Logger.Warn("process may not be ready to accept connections",
+				zap.String("file", file),
+				zap.String("host:port", fmt.Sprintf("%s:%d", host, port)),
+				zap.Error(err),
+			)
+		}
+
+		// Success!
+		return fmt.Sprintf("%s:%d", host, port), nil
 	}
 
-	return fmt.Sprintf("%s:%d", host, port), nil
+	// Should never reach here, but just in case
+	return "", fmt.Errorf("failed to create process after %d attempts", maxRetries)
 }
 
 // Stop stops the process manager and all managed processes
@@ -341,6 +375,16 @@ func getFreePort() (int, error) {
 	}
 
 	return addr.Port, nil
+}
+
+// isPortInUse checks if a port is currently in use by attempting a quick connection
+func (pm *ProcessManager) isPortInUse(host string, port int) bool {
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), 100*time.Millisecond)
+	if err != nil {
+		return false // Port is not in use
+	}
+	conn.Close()
+	return true // Port is in use
 }
 
 // waitForPortReady waits for a port to be ready to accept connections
