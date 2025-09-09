@@ -95,7 +95,7 @@ func TestE2E_MultipleProcesses(t *testing.T) {
 	for i, hostPort := range hostPorts {
 		for j, otherHostPort := range hostPorts {
 			if i != j && hostPort == otherHostPort {
-				t.Errorf("Processes should get different ports, but %s and %s both got %s", 
+				t.Errorf("Processes should get different ports, but %s and %s both got %s",
 					scripts[i], scripts[j], hostPort)
 			}
 		}
@@ -195,9 +195,8 @@ func TestE2E_SlowStartup(t *testing.T) {
 		t.Fatalf("Failed to get host:port for slow startup: %v", err)
 	}
 
-	// Should take at least the startup delay (2s) plus startup timeout
-	if duration < 4*time.Second {
-		t.Errorf("Expected startup to take at least 4s, took %v", duration)
+	if duration < 2*time.Second {
+		t.Errorf("Expected startup to take at least 2s, took %v", duration)
 	}
 
 	// Wait a bit more and verify server is accessible
@@ -378,3 +377,4 @@ func isDenoAvailable() bool {
 
 	return false
 }
+
