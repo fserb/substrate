@@ -409,3 +409,7 @@ func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.D
 		}
 	}
 }
+
+func (pm *ProcessManager) Destruct() error {
+	return pm.Stop()
+}

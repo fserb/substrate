@@ -10,6 +10,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var processPool = caddy.NewUsagePool()
+
 func init() {
 	caddy.RegisterModule(SubstrateTransport{})
 }
@@ -46,10 +48,18 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 	}
 	t.transport = httpTransport.Transport
 
-	var err error
-	t.manager, err = NewProcessManager(t.IdleTimeout, t.StartupTimeout, t.logger)
+	manager, loaded, err := processPool.LoadOrNew("process_manager", func() (caddy.Destructor, error) {
+		return NewProcessManager(t.IdleTimeout, t.StartupTimeout, t.logger)
+	})
 	if err != nil {
-		return fmt.Errorf("failed to create process manager: %w", err)
+		return fmt.Errorf("failed to get process manager: %w", err)
+	}
+	t.manager = manager.(*ProcessManager)
+
+	if loaded {
+		t.logger.Info("reusing existing process manager from pool")
+	} else {
+		t.logger.Info("created new process manager")
 	}
 
 	t.logger.Info("substrate transport provisioned",
@@ -82,7 +92,8 @@ func (t *SubstrateTransport) Validate() error {
 
 func (t *SubstrateTransport) Cleanup() error {
 	if t.manager != nil {
-		return t.manager.Stop()
+		_, err := processPool.Delete("process_manager")
+		return err
 	}
 	return nil
 }
