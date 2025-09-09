@@ -18,6 +18,11 @@ function test {
   CGO_ENABLED=0 go test . "$@"
 }
 
+function e2e {
+  echo "Running end-to-end integration tests..."
+  CGO_ENABLED=0 go test . -tags=e2e -v "$@"
+}
+
 function help {
   echo "$0 <task> <args>"
   echo "Tasks:"
