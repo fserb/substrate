@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -72,8 +75,45 @@ func NewProcessManager(config ProcessManagerConfig) (*ProcessManager, error) {
 	return pm, nil
 }
 
+// validateFilePath performs early validation on file paths before process creation
+func validateFilePath(filePath string) error {
+	// Clean the path to resolve any .. components and normalize separators
+	cleanPath := filepath.Clean(filePath)
+	
+	// Check for path traversal attempts
+	if strings.Contains(cleanPath, "..") {
+		return fmt.Errorf("path traversal not allowed: %s", filePath)
+	}
+	
+	// Ensure it's an absolute path
+	if !filepath.IsAbs(cleanPath) {
+		return fmt.Errorf("file path must be absolute: %s", filePath)
+	}
+	
+	// Check if file exists
+	fileInfo, err := os.Stat(cleanPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("file does not exist: %s", cleanPath)
+		}
+		return fmt.Errorf("failed to stat file %s: %w", cleanPath, err)
+	}
+	
+	// Check if it's a regular file (not a directory or device)
+	if !fileInfo.Mode().IsRegular() {
+		return fmt.Errorf("path is not a regular file: %s", cleanPath)
+	}
+	
+	return nil
+}
+
 // getOrCreateHost gets or creates a host:port for the given file
 func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
+	// Validate the file path early before acquiring locks
+	if err := validateFilePath(file); err != nil {
+		return "", err
+	}
+	
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 

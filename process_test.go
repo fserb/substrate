@@ -1,6 +1,8 @@
 package substrate
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -163,5 +165,79 @@ func TestManagedProcess_Stop(t *testing.T) {
 	}
 }
 
+func TestValidateFilePath(t *testing.T) {
+	// Create a temporary directory and file for testing
+	tmpDir := t.TempDir()
+	validFile := filepath.Join(tmpDir, "test.sh")
+	err := os.WriteFile(validFile, []byte("#!/bin/bash\necho hello"), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
 
+	// Test valid absolute path
+	err = validateFilePath(validFile)
+	if err != nil {
+		t.Errorf("Valid absolute path should pass validation: %v", err)
+	}
+
+	// Test non-existent file
+	nonExistentFile := filepath.Join(tmpDir, "nonexistent.sh")
+	err = validateFilePath(nonExistentFile)
+	if err == nil {
+		t.Error("Non-existent file should fail validation")
+	}
+
+	// Test relative path
+	err = validateFilePath("relative/path.sh")
+	if err == nil {
+		t.Error("Relative path should fail validation")
+	}
+
+	// Test path traversal
+	traversalPath := filepath.Join(tmpDir, "../../../etc/passwd")
+	err = validateFilePath(traversalPath)
+	if err == nil {
+		t.Error("Path traversal should fail validation")
+	}
+
+	// Test directory instead of file
+	err = validateFilePath(tmpDir)
+	if err == nil {
+		t.Error("Directory should fail validation")
+	}
+}
+
+func TestProcessManager_GetOrCreateHost_FileValidation(t *testing.T) {
+	logger := zap.NewNop()
+	config := ProcessManagerConfig{
+		IdleTimeout:    caddy.Duration(time.Minute),
+		StartupTimeout: caddy.Duration(100 * time.Millisecond),
+		Logger:         logger,
+	}
+
+	pm, err := NewProcessManager(config)
+	if err != nil {
+		t.Fatalf("Failed to create process manager: %v", err)
+	}
+	defer pm.Stop()
+
+	// Test with non-existent file
+	_, err = pm.getOrCreateHost("/nonexistent/file.sh")
+	if err == nil {
+		t.Error("getOrCreateHost should fail for non-existent file")
+	}
+
+	// Test with relative path
+	_, err = pm.getOrCreateHost("relative/path.sh")
+	if err == nil {
+		t.Error("getOrCreateHost should fail for relative path")
+	}
+
+	// Test with directory
+	tmpDir := t.TempDir()
+	_, err = pm.getOrCreateHost(tmpDir)
+	if err == nil {
+		t.Error("getOrCreateHost should fail for directory")
+	}
+}
 
