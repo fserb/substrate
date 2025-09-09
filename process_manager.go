@@ -54,11 +54,10 @@ type ProcessConfig struct {
 	Args    []string
 }
 
-
 // NewProcessManager creates a new process manager
 func NewProcessManager(config ProcessManagerConfig) (*ProcessManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	pm := &ProcessManager{
 		config:    config,
 		processes: make(map[string]*ProcessInfo),
@@ -128,12 +127,19 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 		zap.Int("pid", process.Cmd.Process.Pid),
 	)
 
-	// Wait for startup
-	time.Sleep(time.Duration(pm.config.StartupTimeout))
+	// Wait for the process to be ready to accept connections
+	// If this fails, we still return the host:port but log a warning
+	// This allows backward compatibility with processes that might not start HTTP servers immediately
+	if err := pm.waitForPortReady(host, port, time.Duration(pm.config.StartupTimeout)); err != nil {
+		pm.config.Logger.Warn("process may not be ready to accept connections",
+			zap.String("file", file),
+			zap.String("host:port", fmt.Sprintf("%s:%d", host, port)),
+			zap.Error(err),
+		)
+	}
 
 	return fmt.Sprintf("%s:%d", host, port), nil
 }
-
 
 // Stop stops the process manager and all managed processes
 func (pm *ProcessManager) Stop() error {
@@ -299,26 +305,25 @@ func (mp *ManagedProcess) Stop() error {
 	return nil
 }
 
-
 // isProcessAlreadyFinished checks if the error indicates the process already finished
 func isProcessAlreadyFinished(err error) bool {
 	if err == nil {
 		return true // No error means successful termination
 	}
-	
+
 	if exitError, ok := err.(*exec.ExitError); ok {
 		return exitError.Exited()
 	}
-	
+
 	// Handle common process termination scenarios
 	errStr := err.Error()
 	// Accept any signal-based termination as expected
-	if errStr == "signal: terminated" || 
-	   errStr == "signal: killed" ||
-	   errStr == "wait: no child processes" {
+	if errStr == "signal: terminated" ||
+		errStr == "signal: killed" ||
+		errStr == "wait: no child processes" {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -329,11 +334,46 @@ func getFreePort() (int, error) {
 		return 0, fmt.Errorf("failed to find free port: %w", err)
 	}
 	defer listener.Close()
-	
+
 	addr, ok := listener.Addr().(*net.TCPAddr)
 	if !ok {
 		return 0, fmt.Errorf("failed to get TCP address")
 	}
-	
+
 	return addr.Port, nil
 }
+
+// waitForPortReady waits for a port to be ready to accept connections
+// Returns early if the port becomes ready before the timeout
+func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	hostPort := fmt.Sprintf("%s:%d", host, port)
+
+	// Try connecting every 25ms for faster response
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-time.After(time.Until(deadline)):
+			return fmt.Errorf("timeout waiting for port %s to become ready after %v", hostPort, timeout)
+		case <-ticker.C:
+			// Try to connect to the port
+			conn, err := net.DialTimeout("tcp", hostPort, 500*time.Millisecond)
+			if err == nil {
+				conn.Close()
+				pm.config.Logger.Info("port became ready",
+					zap.String("host:port", hostPort),
+					zap.Duration("wait_time", time.Since(deadline.Add(-timeout))),
+				)
+				return nil
+			}
+
+			// If we're past the deadline, return timeout error
+			if time.Now().After(deadline) {
+				return fmt.Errorf("timeout waiting for port %s to become ready after %v", hostPort, timeout)
+			}
+		}
+	}
+}
+
