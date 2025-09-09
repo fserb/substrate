@@ -214,6 +214,11 @@ func (mp *ManagedProcess) start() error {
 	// Create the command with args
 	mp.Cmd = exec.Command(mp.Config.Command, mp.Config.Args...)
 
+	// Configure process security to run with file owner's permissions
+	if err := configureProcessSecurity(mp.Cmd, mp.Config.Command); err != nil {
+		return fmt.Errorf("failed to configure process security: %w", err)
+	}
+
 	// Start the process
 	if err := mp.Cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start command: %w", err)
