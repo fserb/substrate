@@ -61,17 +61,4 @@ func configureProcessSecurity(cmd *exec.Cmd, filePath string) error {
 	return nil
 }
 
-func getFileOwnership(filePath string) (uint32, uint32, error) {
-	fileInfo, err := os.Stat(filePath)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to stat file %s: %w", filePath, err)
-	}
-
-	stat, ok := fileInfo.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, 0, fmt.Errorf("failed to get file system info for %s", filePath)
-	}
-
-	return stat.Uid, stat.Gid, nil
-}
 

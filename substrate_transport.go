@@ -18,9 +18,6 @@ func init() {
 // It starts processes on demand, manages their lifecycle, and proxies HTTP requests to them.
 // Similar to FastCGI but uses HTTP protocol and provides more flexible process management.
 type SubstrateTransport struct {
-	// Embed HTTPTransport to inherit standard HTTP transport functionality
-	*reverseproxy.HTTPTransport
-
 	// How long to keep idle processes alive
 	IdleTimeout caddy.Duration `json:"idle_timeout,omitempty"`
 
@@ -28,9 +25,10 @@ type SubstrateTransport struct {
 	StartupTimeout caddy.Duration `json:"startup_timeout,omitempty"`
 
 	// Internal state
-	ctx     caddy.Context
-	manager *ProcessManager
-	logger  *zap.Logger
+	ctx       caddy.Context
+	transport http.RoundTripper
+	manager   *ProcessManager
+	logger    *zap.Logger
 }
 
 
@@ -40,7 +38,6 @@ func (SubstrateTransport) CaddyModule() caddy.ModuleInfo {
 		ID: "http.reverse_proxy.transport.substrate",
 		New: func() caddy.Module {
 			return &SubstrateTransport{
-				HTTPTransport:  new(reverseproxy.HTTPTransport),
 				IdleTimeout:    caddy.Duration(300000000000), // 5 minutes
 				StartupTimeout: caddy.Duration(30000000000),  // 30 seconds
 			}
@@ -53,15 +50,14 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 	t.ctx = ctx
 	t.logger = ctx.Logger()
 
-	// Initialize the underlying HTTP transport
-	if t.HTTPTransport == nil {
-		t.HTTPTransport = new(reverseproxy.HTTPTransport)
-	}
-
-	// Set up the HTTP transport with our context
-	if err := t.HTTPTransport.Provision(ctx); err != nil {
+	// Create and provision HTTPTransport to get a properly configured RoundTripper
+	httpTransport := new(reverseproxy.HTTPTransport)
+	if err := httpTransport.Provision(ctx); err != nil {
 		return fmt.Errorf("failed to provision HTTP transport: %w", err)
 	}
+	
+	// Keep only the RoundTripper we actually need
+	t.transport = httpTransport.Transport
 
 	// Initialize process manager
 	var err error
@@ -86,8 +82,22 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 
 // Validate ensures the transport configuration is valid.
 func (t *SubstrateTransport) Validate() error {
-	// HTTPTransport doesn't have a Validate method, so we skip this validation
-	// The underlying HTTP transport will be validated during Provision
+	if t.IdleTimeout < 0 {
+		return fmt.Errorf("idle_timeout cannot be negative")
+	}
+	
+	if t.StartupTimeout < 0 {
+		return fmt.Errorf("startup_timeout cannot be negative")
+	}
+	
+	if t.StartupTimeout == 0 {
+		return fmt.Errorf("startup_timeout cannot be zero")
+	}
+	
+	// Warn about very long startup timeouts (probably a mistake)
+	if t.StartupTimeout > caddy.Duration(5*time.Minute) {
+		return fmt.Errorf("startup_timeout is very long (%v), this seems unusual", time.Duration(t.StartupTimeout))
+	}
 
 	return nil
 }
@@ -103,9 +113,6 @@ func (t *SubstrateTransport) Cleanup() error {
 // RoundTrip implements http.RoundTripper. This is the main method that handles
 // incoming requests and routes them to managed processes.
 func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Set the scheme for the underlying HTTP transport
-	t.HTTPTransport.SetScheme(req)
-
 	// Get the replacer from the request context
 	repl := req.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 	
@@ -128,7 +135,7 @@ func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error
 	req.URL.Scheme = "http"
 
 	// Perform the actual request using the underlying HTTP transport
-	resp, err := t.HTTPTransport.Transport.RoundTrip(req)
+	resp, err := t.transport.RoundTrip(req)
 	if err != nil {
 		// Restore original host for error reporting
 		req.URL.Host = originalHost

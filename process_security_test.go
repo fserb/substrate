@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 	"testing"
 )
 
@@ -40,38 +39,3 @@ func TestConfigureProcessSecurity_NonRoot(t *testing.T) {
 	}
 }
 
-func TestGetFileOwnership(t *testing.T) {
-	tmpDir := t.TempDir()
-	testFile := filepath.Join(tmpDir, "test_file")
-	
-	err := os.WriteFile(testFile, []byte("test content"), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create test file: %v", err)
-	}
-
-	uid, gid, err := getFileOwnership(testFile)
-	if err != nil {
-		t.Fatalf("Failed to get file ownership: %v", err)
-	}
-
-	// Verify by comparing with syscall.Stat
-	fileInfo, err := os.Stat(testFile)
-	if err != nil {
-		t.Fatalf("Failed to stat file: %v", err)
-	}
-
-	stat := fileInfo.Sys().(*syscall.Stat_t)
-	if uid != stat.Uid {
-		t.Errorf("Expected UID %d, got %d", stat.Uid, uid)
-	}
-	if gid != stat.Gid {
-		t.Errorf("Expected GID %d, got %d", stat.Gid, gid)
-	}
-}
-
-func TestGetFileOwnership_NonexistentFile(t *testing.T) {
-	_, _, err := getFileOwnership("/nonexistent/file")
-	if err == nil {
-		t.Error("Expected error for nonexistent file")
-	}
-}

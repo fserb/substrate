@@ -15,8 +15,3 @@ func configureProcessSecurity(cmd *exec.Cmd, filePath string) error {
 	return nil
 }
 
-// getFileOwnership returns 0,0 on Windows as UID/GID don't apply
-func getFileOwnership(filePath string) (uint32, uint32, error) {
-	// Windows uses different security model - SIDs instead of UID/GID
-	return 0, 0, nil
-}

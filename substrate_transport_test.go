@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy"
 )
 
 func TestSubstrateTransport_CaddyModule(t *testing.T) {
@@ -36,7 +35,6 @@ func TestSubstrateTransport_CaddyModule(t *testing.T) {
 
 func TestSubstrateTransport_Provision(t *testing.T) {
 	transport := &SubstrateTransport{
-		HTTPTransport:  new(reverseproxy.HTTPTransport),
 		IdleTimeout:    caddy.Duration(300000000000), // 5 minutes
 		StartupTimeout: caddy.Duration(30000000000),  // 30 seconds
 	}
@@ -161,7 +159,6 @@ process.on('SIGTERM', () => {
 
 	// Setup transport
 	transport := &SubstrateTransport{
-		HTTPTransport:  new(reverseproxy.HTTPTransport),
 		IdleTimeout:    caddy.Duration(60 * time.Second),
 		StartupTimeout: caddy.Duration(5 * time.Second),
 	}
@@ -215,7 +212,6 @@ process.on('SIGTERM', () => {
 
 func TestSubstrateTransport_Cleanup(t *testing.T) {
 	transport := &SubstrateTransport{
-		HTTPTransport:  new(reverseproxy.HTTPTransport),
 		IdleTimeout:    caddy.Duration(60 * time.Second),
 		StartupTimeout: caddy.Duration(5 * time.Second),
 	}
@@ -244,10 +240,24 @@ func TestSubstrateTransport_Cleanup(t *testing.T) {
 }
 
 func TestSubstrateTransport_Validate(t *testing.T) {
-	transport := &SubstrateTransport{}
+	transport := &SubstrateTransport{
+		IdleTimeout:    caddy.Duration(5 * time.Minute),
+		StartupTimeout: caddy.Duration(30 * time.Second),
+	}
 
 	err := transport.Validate()
 	if err != nil {
-		t.Errorf("Validate should not return error for default transport, got: %v", err)
+		t.Errorf("Validate should not return error for valid transport, got: %v", err)
+	}
+	
+	// Test invalid configurations
+	invalidTransport := &SubstrateTransport{
+		IdleTimeout:    caddy.Duration(-1 * time.Second),
+		StartupTimeout: caddy.Duration(0),
+	}
+	
+	err = invalidTransport.Validate()
+	if err == nil {
+		t.Error("Validate should return error for invalid transport")
 	}
 }
