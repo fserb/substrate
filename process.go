@@ -16,81 +16,58 @@ import (
 	"go.uber.org/zap"
 )
 
-// ProcessManagerConfig holds configuration for the process manager
-type ProcessManagerConfig struct {
-	IdleTimeout    caddy.Duration
-	StartupTimeout caddy.Duration
-	Logger         *zap.Logger
-}
-
-// ProcessManager manages the lifecycle of substrate processes
 type ProcessManager struct {
-	config    ProcessManagerConfig
-	processes map[string]*ProcessInfo
-	mu        sync.RWMutex
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
+	idleTimeout    caddy.Duration
+	startupTimeout caddy.Duration
+	logger         *zap.Logger
+	processes      map[string]*Process
+	mu             sync.RWMutex
+	ctx            context.Context
+	cancel         context.CancelFunc
+	wg             sync.WaitGroup
 }
 
-// ProcessInfo holds information about a running process
-type ProcessInfo struct {
-	Process *ManagedProcess
-	Host    string
-	Port    int
-}
-
-// ManagedProcess represents a single managed process
-type ManagedProcess struct {
-	Key      string
-	Config   ProcessConfig
+type Process struct {
+	Command  string
+	Host     string
+	Port     int
 	Cmd      *exec.Cmd
 	LastUsed time.Time
-	running  bool
+	exitCode int
+	onExit   func()
 	mu       sync.RWMutex
 	logger   *zap.Logger
 }
 
-// ProcessConfig contains the configuration for starting a process
-type ProcessConfig struct {
-	Command string
-	Args    []string
-}
-
-// NewProcessManager creates a new process manager
-func NewProcessManager(config ProcessManagerConfig) (*ProcessManager, error) {
+func NewProcessManager(idleTimeout, startupTimeout caddy.Duration, logger *zap.Logger) (*ProcessManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	pm := &ProcessManager{
-		config:    config,
-		processes: make(map[string]*ProcessInfo),
-		ctx:       ctx,
-		cancel:    cancel,
+		idleTimeout:    idleTimeout,
+		startupTimeout: startupTimeout,
+		logger:         logger,
+		processes:      make(map[string]*Process),
+		ctx:            ctx,
+		cancel:         cancel,
 	}
 
-	// Start the cleanup goroutine
 	pm.wg.Add(1)
 	go pm.cleanupLoop()
 
 	return pm, nil
 }
 
-// validateFilePath performs early validation on file paths before process creation
 func validateFilePath(filePath string) error {
-	// Clean the path to resolve any .. components and normalize separators
 	cleanPath := filepath.Clean(filePath)
-	
-	// Check for path traversal attempts
+
 	if strings.Contains(cleanPath, "..") {
 		return fmt.Errorf("path traversal not allowed: %s", filePath)
 	}
-	
-	// Ensure it's an absolute path
+
 	if !filepath.IsAbs(cleanPath) {
 		return fmt.Errorf("file path must be absolute: %s", filePath)
 	}
-	
-	// Check if file exists
+
 	fileInfo, err := os.Stat(cleanPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -98,124 +75,96 @@ func validateFilePath(filePath string) error {
 		}
 		return fmt.Errorf("failed to stat file %s: %w", cleanPath, err)
 	}
-	
-	// Check if it's a regular file (not a directory or device)
+
 	if !fileInfo.Mode().IsRegular() {
 		return fmt.Errorf("path is not a regular file: %s", cleanPath)
 	}
-	
+
 	return nil
 }
 
-// getOrCreateHost gets or creates a host:port for the given file
 func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
-	// Validate the file path early before acquiring locks
 	if err := validateFilePath(file); err != nil {
 		return "", err
 	}
-	
+
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	// Check if process already exists and is running
-	if info, exists := pm.processes[file]; exists && info.Process.IsRunning() {
-		info.Process.mu.Lock()
-		info.Process.LastUsed = time.Now()
-		info.Process.mu.Unlock()
-		return fmt.Sprintf("%s:%d", info.Host, info.Port), nil
+	if process, exists := pm.processes[file]; exists {
+		process.mu.Lock()
+		process.LastUsed = time.Now()
+		process.mu.Unlock()
+		return fmt.Sprintf("%s:%d", process.Host, process.Port), nil
 	}
 
 	host := "localhost"
 	maxRetries := 3
 
-	// Retry loop to handle port allocation race conditions
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		// Get a free port
 		port, err := getFreePort()
 		if err != nil {
 			return "", fmt.Errorf("failed to get free port: %w", err)
 		}
 
-		// Create process config
-		config := ProcessConfig{
-			Command: file,
-			Args:    []string{host, fmt.Sprintf("%d", port)},
-		}
-
-		// Create new managed process
-		process := &ManagedProcess{
-			Key:      file,
-			Config:   config,
+		process := &Process{
+			Command:  file,
+			Host:     host,
+			Port:     port,
 			LastUsed: time.Now(),
-			running:  false,
-			logger:   pm.config.Logger,
+			onExit:   func() { pm.removeProcess(file) },
+			logger:   pm.logger,
 		}
 
-		// Start the process
 		if err := process.start(); err != nil {
-			// Process failed to start - check if it's due to port conflict
 			if pm.isPortInUse(host, port) {
-				pm.config.Logger.Warn("port race condition detected during process start, retrying",
+				pm.logger.Warn("port race condition detected during process start, retrying",
 					zap.Int("attempt", attempt),
 					zap.Int("port", port),
 					zap.String("file", file),
 				)
 				if attempt < maxRetries {
-					continue // retry with new port
+					continue
 				}
 			}
-			// Not a port race or max retries reached
 			return "", fmt.Errorf("failed to start process after %d attempts: %w", attempt, err)
 		}
 
-		// Store the process info
-		info := &ProcessInfo{
-			Process: process,
-			Host:    host,
-			Port:    port,
-		}
-		pm.processes[file] = info
+		pm.processes[file] = process
 
-		pm.config.Logger.Info("started process",
+		pm.logger.Info("started process",
 			zap.String("file", file),
 			zap.String("host:port", fmt.Sprintf("%s:%d", host, port)),
 			zap.Int("pid", process.Cmd.Process.Pid),
 			zap.Int("attempt", attempt),
 		)
 
-		// Wait for the process to be ready to accept connections
-		if err := pm.waitForPortReady(host, port, time.Duration(pm.config.StartupTimeout)); err != nil {
-			// Check if someone else grabbed the port after our process started
+		if err := pm.waitForPortReady(host, port, time.Duration(pm.startupTimeout)); err != nil {
 			if pm.isPortInUse(host, port) {
-				pm.config.Logger.Warn("port stolen after process start, retrying",
+				pm.logger.Warn("port stolen after process start, retrying",
 					zap.Int("attempt", attempt),
 					zap.Int("port", port),
 					zap.String("file", file),
 				)
-				process.Stop() // cleanup failed process
+				process.Stop()
 				delete(pm.processes, file)
 				if attempt < maxRetries {
-					continue // retry with new port
+					continue
 				}
 				return "", fmt.Errorf("port conflicts persist after %d attempts", maxRetries)
 			}
-			// Process started but isn't listening - warn but continue for backward compatibility
-			pm.config.Logger.Warn("process may not be ready to accept connections",
+			pm.logger.Warn("process may not be ready to accept connections",
 				zap.String("file", file),
 				zap.String("host:port", fmt.Sprintf("%s:%d", host, port)),
 				zap.Error(err),
 			)
 		}
-
-		// Success!
 		return fmt.Sprintf("%s:%d", host, port), nil
 	}
 
-	// Should never reach here, but just in case
 	return "", fmt.Errorf("failed to create process after %d attempts", maxRetries)
 }
 
-// Stop stops the process manager and all managed processes
 func (pm *ProcessManager) Stop() error {
 	pm.cancel()
 	pm.wg.Wait()
@@ -224,9 +173,9 @@ func (pm *ProcessManager) Stop() error {
 	defer pm.mu.Unlock()
 
 	var errors []error
-	for key, info := range pm.processes {
-		if err := info.Process.Stop(); err != nil {
-			errors = append(errors, fmt.Errorf("failed to stop process %s: %w", key, err))
+	for command, process := range pm.processes {
+		if err := process.Stop(); err != nil {
+			errors = append(errors, fmt.Errorf("failed to stop process %s: %w", command, err))
 		}
 	}
 
@@ -237,7 +186,6 @@ func (pm *ProcessManager) Stop() error {
 	return nil
 }
 
-// cleanupLoop runs periodically to clean up idle processes
 func (pm *ProcessManager) cleanupLoop() {
 	defer pm.wg.Done()
 
@@ -254,144 +202,152 @@ func (pm *ProcessManager) cleanupLoop() {
 	}
 }
 
-// cleanupIdleProcesses stops processes that have been idle for too long
+func (pm *ProcessManager) removeProcess(command string) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if _, exists := pm.processes[command]; exists {
+		pm.logger.Info("removing exited process from pool",
+			zap.String("command", command),
+		)
+		delete(pm.processes, command)
+	}
+}
+
 func (pm *ProcessManager) cleanupIdleProcesses() {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	idleTimeout := time.Duration(pm.config.IdleTimeout)
+	idleTimeout := time.Duration(pm.idleTimeout)
 	now := time.Now()
 
-	for key, info := range pm.processes {
-		info.Process.mu.RLock()
-		lastUsed := info.Process.LastUsed
-		isRunning := info.Process.IsRunning()
-		info.Process.mu.RUnlock()
+	for command, process := range pm.processes {
+		process.mu.RLock()
+		lastUsed := process.LastUsed
+		process.mu.RUnlock()
 
-		if isRunning && now.Sub(lastUsed) > idleTimeout {
-			pm.config.Logger.Info("stopping idle process",
-				zap.String("key", key),
+		if now.Sub(lastUsed) > idleTimeout {
+			pm.logger.Info("stopping idle process",
+				zap.String("command", command),
 				zap.Duration("idle_time", now.Sub(lastUsed)),
 			)
 
-			if err := info.Process.Stop(); err != nil {
-				pm.config.Logger.Error("failed to stop idle process",
-					zap.String("key", key),
+			if err := process.Stop(); err != nil {
+				pm.logger.Error("failed to stop idle process",
+					zap.String("command", command),
 					zap.Error(err),
 				)
 			} else {
-				delete(pm.processes, key)
+				delete(pm.processes, command)
 			}
 		}
 	}
 }
 
-// start starts the managed process
-func (mp *ManagedProcess) start() error {
-	mp.mu.Lock()
-	defer mp.mu.Unlock()
+func (p *Process) start() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	// Create the command with args
-	mp.Cmd = exec.Command(mp.Config.Command, mp.Config.Args...)
+	args := []string{p.Host, fmt.Sprintf("%d", p.Port)}
+	p.Cmd = exec.Command(p.Command, args...)
 
-	// Configure process security to run with file owner's permissions
-	if err := configureProcessSecurity(mp.Cmd, mp.Config.Command); err != nil {
+	if err := configureProcessSecurity(p.Cmd, p.Command); err != nil {
 		return fmt.Errorf("failed to configure process security: %w", err)
 	}
 
-	// Start the process
-	if err := mp.Cmd.Start(); err != nil {
+	if err := p.Cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start command: %w", err)
 	}
 
-	mp.running = true
-
-	// Monitor the process in a goroutine
-	go mp.monitor()
+	go p.monitor()
 
 	return nil
 }
 
-// monitor monitors the process and updates running state when it exits
-func (mp *ManagedProcess) monitor() {
-	// Wait for the process to complete
-	mp.Cmd.Wait()
+func (p *Process) monitor() {
+	err := p.Cmd.Wait()
 
-	mp.mu.Lock()
-	mp.running = false
-	mp.mu.Unlock()
+	p.mu.Lock()
+	if err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok {
+			p.exitCode = exitError.ExitCode()
+		} else {
+			p.exitCode = -1
+		}
+	} else {
+		p.exitCode = 0
+	}
+
+	crashed := p.exitCode != 0
+	command := p.Command
+	p.mu.Unlock()
+
+	if crashed {
+		p.logger.Error("process crashed",
+			zap.String("command", command),
+			zap.Int("exit_code", p.exitCode),
+			zap.Error(err),
+		)
+	} else {
+		p.logger.Info("process exited normally",
+			zap.String("command", command),
+		)
+	}
+
+	p.onExit()
 }
 
-// IsRunning returns true if the process is currently running
-func (mp *ManagedProcess) IsRunning() bool {
-	mp.mu.RLock()
-	defer mp.mu.RUnlock()
-	return mp.running
-}
+func (p *Process) Stop() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-// Stop stops the managed process
-func (mp *ManagedProcess) Stop() error {
-	mp.mu.Lock()
-	defer mp.mu.Unlock()
-
-	if mp.Cmd == nil || mp.Cmd.Process == nil {
+	if p.Cmd == nil || p.Cmd.Process == nil {
 		return nil
 	}
 
-	if !mp.running {
-		return nil
-	}
-
-	mp.logger.Info("stopping process",
-		zap.String("key", mp.Key),
-		zap.Int("pid", mp.Cmd.Process.Pid),
+	p.logger.Info("stopping process",
+		zap.String("command", p.Command),
+		zap.Int("pid", p.Cmd.Process.Pid),
 	)
 
-	// Send SIGTERM first
-	if err := mp.Cmd.Process.Signal(syscall.SIGTERM); err != nil {
+	if err := p.Cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		return fmt.Errorf("failed to send SIGTERM: %w", err)
 	}
 
-	// Give the process time to shut down gracefully
 	done := make(chan error, 1)
 	go func() {
-		done <- mp.Cmd.Wait()
+		done <- p.Cmd.Wait()
 	}()
 
 	select {
 	case <-time.After(10 * time.Second):
-		// Force kill if it doesn't shut down gracefully
-		mp.logger.Warn("process did not shut down gracefully, force killing",
-			zap.String("key", mp.Key),
-			zap.Int("pid", mp.Cmd.Process.Pid),
+		p.logger.Warn("process did not shut down gracefully, force killing",
+			zap.String("command", p.Command),
+			zap.Int("pid", p.Cmd.Process.Pid),
 		)
-		if err := mp.Cmd.Process.Kill(); err != nil {
+		if err := p.Cmd.Process.Kill(); err != nil {
 			return fmt.Errorf("failed to kill process: %w", err)
 		}
-		<-done // Wait for process to actually exit
+		<-done
 	case err := <-done:
 		if err != nil && !isProcessAlreadyFinished(err) {
 			return fmt.Errorf("process exit error: %w", err)
 		}
 	}
 
-	mp.running = false
 	return nil
 }
 
-// isProcessAlreadyFinished checks if the error indicates the process already finished
 func isProcessAlreadyFinished(err error) bool {
 	if err == nil {
-		return true // No error means successful termination
+		return true
 	}
 
 	if exitError, ok := err.(*exec.ExitError); ok {
 		return exitError.Exited()
 	}
 
-	// Handle common process termination scenarios
 	errStr := err.Error()
-	// Accept any signal-based termination as expected
 	if errStr == "signal: terminated" ||
 		errStr == "signal: killed" ||
 		errStr == "wait: no child processes" {
@@ -401,7 +357,6 @@ func isProcessAlreadyFinished(err error) bool {
 	return false
 }
 
-// getFreePort finds an available port on localhost
 func getFreePort() (int, error) {
 	listener, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
@@ -417,23 +372,19 @@ func getFreePort() (int, error) {
 	return addr.Port, nil
 }
 
-// isPortInUse checks if a port is currently in use by attempting a quick connection
 func (pm *ProcessManager) isPortInUse(host string, port int) bool {
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), 100*time.Millisecond)
 	if err != nil {
-		return false // Port is not in use
+		return false
 	}
 	conn.Close()
-	return true // Port is in use
+	return true
 }
 
-// waitForPortReady waits for a port to be ready to accept connections
-// Returns early if the port becomes ready before the timeout
 func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	hostPort := fmt.Sprintf("%s:%d", host, port)
 
-	// Try connecting every 25ms for faster response
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -442,18 +393,16 @@ func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.D
 		case <-time.After(time.Until(deadline)):
 			return fmt.Errorf("timeout waiting for port %s to become ready after %v", hostPort, timeout)
 		case <-ticker.C:
-			// Try to connect to the port
 			conn, err := net.DialTimeout("tcp", hostPort, 500*time.Millisecond)
 			if err == nil {
 				conn.Close()
-				pm.config.Logger.Info("port became ready",
+				pm.logger.Info("port became ready",
 					zap.String("host:port", hostPort),
 					zap.Duration("wait_time", time.Since(deadline.Add(-timeout))),
 				)
 				return nil
 			}
 
-			// If we're past the deadline, return timeout error
 			if time.Now().After(deadline) {
 				return fmt.Errorf("timeout waiting for port %s to become ready after %v", hostPort, timeout)
 			}

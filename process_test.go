@@ -2,6 +2,7 @@ package substrate
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -11,51 +12,39 @@ import (
 )
 
 func TestProcessManager_GetOrCreateHost(t *testing.T) {
-	// Create a test logger
 	logger := zap.NewNop()
-
-	// Create process manager config with shorter timeouts for testing
-	config := ProcessManagerConfig{
-		IdleTimeout:    caddy.Duration(time.Minute),
-		StartupTimeout: caddy.Duration(100 * time.Millisecond), // Much shorter for tests
-		Logger:         logger,
-	}
-
-	// Create process manager
-	pm, err := NewProcessManager(config)
+	pm, err := NewProcessManager(
+		caddy.Duration(time.Minute),
+		caddy.Duration(100*time.Millisecond),
+		logger,
+	)
 	if err != nil {
 		t.Fatalf("Failed to create process manager: %v", err)
 	}
 	defer pm.Stop()
 
 
-	// Test getOrCreateHost with a simple command that exits quickly
 	filePath := "/bin/echo"
 	hostPort, err := pm.getOrCreateHost(filePath)
 	if err != nil {
 		t.Fatalf("Failed to get host:port: %v", err)
 	}
 
-	// Verify we got a valid host:port
 	if hostPort == "" {
 		t.Error("Host:port should not be empty")
 	}
-
-	// Should be in format "localhost:port"
-	if len(hostPort) < 10 { // "localhost:" is 10 chars, plus at least 1 digit
+	if len(hostPort) < 10 {
 		t.Errorf("Host:port format looks incorrect: %s", hostPort)
 	}
 }
 
 func TestProcessManager_MultipleProcesses(t *testing.T) {
 	logger := zap.NewNop()
-	config := ProcessManagerConfig{
-		IdleTimeout:    caddy.Duration(time.Minute),
-		StartupTimeout: caddy.Duration(100 * time.Millisecond), // Shorter for tests
-		Logger:         logger,
-	}
-
-	pm, err := NewProcessManager(config)
+	pm, err := NewProcessManager(
+		caddy.Duration(time.Minute),
+		caddy.Duration(100*time.Millisecond),
+		logger,
+	)
 	if err != nil {
 		t.Fatalf("Failed to create process manager: %v", err)
 	}
@@ -89,13 +78,11 @@ func TestProcessManager_MultipleProcesses(t *testing.T) {
 
 func TestProcessManager_DifferentFiles(t *testing.T) {
 	logger := zap.NewNop()
-	config := ProcessManagerConfig{
-		IdleTimeout:    caddy.Duration(time.Minute),
-		StartupTimeout: caddy.Duration(100 * time.Millisecond), // Shorter for tests
-		Logger:         logger,
-	}
-
-	pm, err := NewProcessManager(config)
+	pm, err := NewProcessManager(
+		caddy.Duration(time.Minute),
+		caddy.Duration(100*time.Millisecond),
+		logger,
+	)
 	if err != nil {
 		t.Fatalf("Failed to create process manager: %v", err)
 	}
@@ -129,15 +116,15 @@ func TestProcessManager_DifferentFiles(t *testing.T) {
 	}
 }
 
-func TestManagedProcess_Stop(t *testing.T) {
+func TestProcess_Stop(t *testing.T) {
 	logger := zap.NewNop()
 
-	// Create a managed process
-	process := &ManagedProcess{
-		Key:      "test-stop",
-		Config:   ProcessConfig{Command: "sleep", Args: []string{"10"}},
+	process := &Process{
+		Command:  "sleep",
+		Host:     "localhost",
+		Port:     12345,
 		LastUsed: time.Now(),
-		running:  false,
+		onExit:   func() {},
 		logger:   logger,
 	}
 
@@ -147,21 +134,11 @@ func TestManagedProcess_Stop(t *testing.T) {
 		t.Fatalf("Failed to start process: %v", err)
 	}
 
-	// Verify it's running
-	if !process.IsRunning() {
-		t.Error("Process should be running after start")
-	}
-
 	// Stop the process
 	err = process.Stop()
 	if err != nil {
 		// For sleep processes, termination signals are expected
 		t.Logf("Process stop returned error (expected for SIGTERM): %v", err)
-	}
-
-	// Verify it's stopped
-	if process.IsRunning() {
-		t.Error("Process should be stopped after Stop()")
 	}
 }
 
@@ -209,13 +186,11 @@ func TestValidateFilePath(t *testing.T) {
 
 func TestProcessManager_GetOrCreateHost_FileValidation(t *testing.T) {
 	logger := zap.NewNop()
-	config := ProcessManagerConfig{
-		IdleTimeout:    caddy.Duration(time.Minute),
-		StartupTimeout: caddy.Duration(100 * time.Millisecond),
-		Logger:         logger,
-	}
-
-	pm, err := NewProcessManager(config)
+	pm, err := NewProcessManager(
+		caddy.Duration(time.Minute),        // idle timeout
+		caddy.Duration(100*time.Millisecond), // startup timeout
+		logger,
+	)
 	if err != nil {
 		t.Fatalf("Failed to create process manager: %v", err)
 	}
@@ -238,6 +213,191 @@ func TestProcessManager_GetOrCreateHost_FileValidation(t *testing.T) {
 	_, err = pm.getOrCreateHost(tmpDir)
 	if err == nil {
 		t.Error("getOrCreateHost should fail for directory")
+	}
+}
+
+func TestProcess_CrashDetection(t *testing.T) {
+	logger := zap.NewNop()
+
+	// Create a process that will crash (exit with code 1)
+	process := &Process{
+		Command:  "sh",
+		Host:     "localhost",
+		Port:     12346, 
+		LastUsed: time.Now(),
+		onExit:   func() {},
+		logger:   logger,
+	}
+
+	// Override the command args to make it crash
+	process.mu.Lock()
+	// We need to manually set this up since start() would construct normal host/port args
+	process.Cmd = exec.Command("sh", "-c", "exit 1")
+	process.mu.Unlock()
+
+	// Start the command directly
+	if err := process.Cmd.Start(); err != nil {
+		t.Fatalf("Failed to start process: %v", err)
+	}
+
+	// Start monitoring
+	go process.monitor()
+
+	// Wait a moment for the process to exit
+	time.Sleep(100 * time.Millisecond)
+
+	// Check the exit code was captured
+	process.mu.RLock()
+	exitCode := process.exitCode
+	process.mu.RUnlock()
+
+	if exitCode != 1 {
+		t.Errorf("Expected exit code 1 (crash), got %d", exitCode)
+	}
+}
+
+func TestProcessManager_ProcessExitCleanup(t *testing.T) {
+	logger := zap.NewNop()
+	pm, err := NewProcessManager(
+		caddy.Duration(time.Minute),        // idle timeout
+		caddy.Duration(100*time.Millisecond), // startup timeout
+		logger,
+	)
+	if err != nil {
+		t.Fatalf("Failed to create process manager: %v", err)
+	}
+	defer pm.Stop()
+
+	// Create a temporary script that exits with code 42
+	tmpDir := t.TempDir()
+	exitScript := filepath.Join(tmpDir, "exit.sh")
+	err = os.WriteFile(exitScript, []byte("#!/bin/bash\nexit 42"), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create exit script: %v", err)
+	}
+
+	// Get host:port for the script - this will start the process
+	hostPort, err := pm.getOrCreateHost(exitScript)
+	if err != nil {
+		t.Fatalf("Failed to get host:port: %v", err)
+	}
+
+	// Verify the process was added to the map
+	pm.mu.RLock()
+	_, exists := pm.processes[exitScript]
+	pm.mu.RUnlock()
+
+	if !exists {
+		t.Error("Process should exist in processes map")
+	}
+
+	// Wait for the process to exit and be cleaned up
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify the exited process was removed from the map
+	pm.mu.RLock()
+	_, stillExists := pm.processes[exitScript]
+	pm.mu.RUnlock()
+
+	if stillExists {
+		t.Error("Exited process should be removed from processes map")
+	}
+
+	// Verify we got a valid host:port initially
+	if hostPort == "" {
+		t.Error("Host:port should not be empty")
+	}
+}
+
+func TestProcessManager_NormalExitCleanup(t *testing.T) {
+	logger := zap.NewNop()
+	pm, err := NewProcessManager(
+		caddy.Duration(time.Minute),        // idle timeout
+		caddy.Duration(100*time.Millisecond), // startup timeout
+		logger,
+	)
+	if err != nil {
+		t.Fatalf("Failed to create process manager: %v", err)
+	}
+	defer pm.Stop()
+
+	// Create a temporary script that exits normally (code 0)
+	tmpDir := t.TempDir()
+	normalScript := filepath.Join(tmpDir, "normal.sh")
+	err = os.WriteFile(normalScript, []byte("#!/bin/bash\nexit 0"), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create normal exit script: %v", err)
+	}
+
+	// Get host:port for the script - this will start the process
+	hostPort, err := pm.getOrCreateHost(normalScript)
+	if err != nil {
+		t.Fatalf("Failed to get host:port: %v", err)
+	}
+
+	// Verify the process was added to the map
+	pm.mu.RLock()
+	_, exists := pm.processes[normalScript]
+	pm.mu.RUnlock()
+
+	if !exists {
+		t.Error("Process should exist in processes map")
+	}
+
+	// Wait for the process to exit normally and be cleaned up
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify even normally exited processes are removed from the map
+	pm.mu.RLock()
+	_, stillExists := pm.processes[normalScript]
+	pm.mu.RUnlock()
+
+	if stillExists {
+		t.Error("Normally exited process should also be removed from processes map")
+	}
+
+	// Verify we got a valid host:port initially
+	if hostPort == "" {
+		t.Error("Host:port should not be empty")
+	}
+}
+
+func TestProcess_NormalExitLogging(t *testing.T) {
+	logger := zap.NewNop()
+
+	// Create a process that exits normally (exit code 0)
+	process := &Process{
+		Command:  "sh",
+		Host:     "localhost",
+		Port:     12347,
+		LastUsed: time.Now(),
+		onExit:   func() {},
+		logger:   logger,
+	}
+
+	// Override the command args to make it exit normally
+	process.mu.Lock()
+	process.Cmd = exec.Command("sh", "-c", "exit 0")
+	process.mu.Unlock()
+
+	// Start the command directly
+	if err := process.Cmd.Start(); err != nil {
+		t.Fatalf("Failed to start process: %v", err)
+	}
+
+	// Start monitoring
+	go process.monitor()
+
+	// Wait a moment for the process to exit
+	time.Sleep(100 * time.Millisecond)
+
+	// Check the exit code was captured as success
+	process.mu.RLock()
+	exitCode := process.exitCode
+	process.mu.RUnlock()
+
+	if exitCode != 0 {
+		t.Errorf("Expected exit code 0 (normal), got %d", exitCode)
 	}
 }
 
