@@ -120,7 +120,7 @@ func TestProcess_Stop(t *testing.T) {
 	logger := zap.NewNop()
 
 	process := &Process{
-		Command:  "sleep",
+		Command:  "/bin/sleep",
 		Host:     "localhost",
 		Port:     12345,
 		LastUsed: time.Now(),
@@ -291,10 +291,23 @@ func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 		t.Error("Process should exist in processes map")
 	}
 
-	// Wait for the process to exit and be cleaned up
-	time.Sleep(200 * time.Millisecond)
+	// Wait for the process to exit and be cleaned up (with timeout)
+	maxWait := 2 * time.Second
+	checkInterval := 10 * time.Millisecond
+	start := time.Now()
 
-	// Verify the exited process was removed from the map
+	for time.Since(start) < maxWait {
+		pm.mu.RLock()
+		_, stillExists := pm.processes[exitScript]
+		pm.mu.RUnlock()
+		
+		if !stillExists {
+			break // Process was cleaned up
+		}
+		time.Sleep(checkInterval)
+	}
+
+	// Final verification that the process was removed
 	pm.mu.RLock()
 	_, stillExists := pm.processes[exitScript]
 	pm.mu.RUnlock()
