@@ -2,9 +2,7 @@ package substrate
 
 import (
 	"fmt"
-	"net"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
@@ -30,18 +28,11 @@ type SubstrateTransport struct {
 	StartupTimeout caddy.Duration `json:"startup_timeout,omitempty"`
 
 	// Internal state
-	ctx          caddy.Context
-	processMap   map[string]*ProcessInstance
-	processMapMu *sync.RWMutex
-	manager      *ProcessManager
-	logger       *zap.Logger
+	ctx     caddy.Context
+	manager *ProcessManager
+	logger  *zap.Logger
 }
 
-// ProcessInstance represents a running process managed by the transport
-type ProcessInstance struct {
-	Process *ManagedProcess
-	Port    int
-}
 
 // CaddyModule returns the Caddy module information.
 func (SubstrateTransport) CaddyModule() caddy.ModuleInfo {
@@ -61,8 +52,6 @@ func (SubstrateTransport) CaddyModule() caddy.ModuleInfo {
 func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 	t.ctx = ctx
 	t.logger = ctx.Logger()
-	t.processMap = make(map[string]*ProcessInstance)
-	t.processMapMu = new(sync.RWMutex)
 
 	// Initialize the underlying HTTP transport
 	if t.HTTPTransport == nil {
@@ -117,64 +106,6 @@ func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error
 	// Set the scheme for the underlying HTTP transport
 	t.HTTPTransport.SetScheme(req)
 
-	// Generate a key for this process based on the request
-	processKey := t.generateProcessKey(req)
-
-	// Get or start the process for this request
-	instance, err := t.getOrStartProcess(processKey, req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get process for request: %w", err)
-	}
-
-	// Update the request URL to point to the managed process
-	originalHost := req.URL.Host
-	req.URL.Host = fmt.Sprintf("localhost:%d", instance.Port)
-	req.URL.Scheme = "http"
-
-	// Perform the actual request using the underlying HTTP transport
-	resp, err := t.HTTPTransport.Transport.RoundTrip(req)
-	if err != nil {
-		// If the request failed, the process might be dead - mark it for restart
-		t.markProcessForRestart(processKey)
-		
-		// Restore original host for error reporting
-		req.URL.Host = originalHost
-		return nil, fmt.Errorf("request to process failed: %w", err)
-	}
-
-	// Update process last used time
-	t.manager.UpdateLastUsed(processKey)
-
-	return resp, nil
-}
-
-// generateProcessKey creates a unique key for process identification.
-// This uses the request path to determine which file should be executed.
-func (t *SubstrateTransport) generateProcessKey(req *http.Request) string {
-	// Use the request path as the process key - each file gets its own process
-	return req.URL.Path
-}
-
-// getOrStartProcess retrieves an existing process or starts a new one
-func (t *SubstrateTransport) getOrStartProcess(key string, req *http.Request) (*ProcessInstance, error) {
-	// Check if we already have this process running
-	t.processMapMu.RLock()
-	instance, exists := t.processMap[key]
-	t.processMapMu.RUnlock()
-
-	if exists && instance.Process.IsRunning() {
-		return instance, nil
-	}
-
-	// Need to start a new process
-	t.processMapMu.Lock()
-	defer t.processMapMu.Unlock()
-
-	// Double-check in case another goroutine started it
-	if instance, exists := t.processMap[key]; exists && instance.Process.IsRunning() {
-		return instance, nil
-	}
-
 	// Get the replacer from the request context
 	repl := req.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 	
@@ -184,75 +115,32 @@ func (t *SubstrateTransport) getOrStartProcess(key string, req *http.Request) (*
 		// Fallback: use the request path if no file matcher was used
 		filePath = req.URL.Path
 	}
-	
-	// Get a free port for the process to listen on
-	processPort, err := t.getFreePort()
+
+	// Get or create host:port for this file
+	hostPort, err := t.manager.getOrCreateHost(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get free port: %w", err)
-	}
-	
-	// Start the process with host and port as arguments
-	processConfig := ProcessConfig{
-		Command: filePath,
-		Args:    []string{"localhost", fmt.Sprintf("%d", processPort)},
+		return nil, fmt.Errorf("failed to get host for file %s: %w", filePath, err)
 	}
 
-	managedProcess, err := t.manager.StartProcess(key, processConfig)
+	// Update the request URL to point to the managed process
+	originalHost := req.URL.Host
+	req.URL.Host = hostPort
+	req.URL.Scheme = "http"
+
+	// Perform the actual request using the underlying HTTP transport
+	resp, err := t.HTTPTransport.Transport.RoundTrip(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start process: %w", err)
+		// Restore original host for error reporting
+		req.URL.Host = originalHost
+		return nil, fmt.Errorf("request to process failed: %w", err)
 	}
 
-	// Give the process time to start listening
-	time.Sleep(time.Duration(t.StartupTimeout))
-
-	// Create the process instance
-	instance = &ProcessInstance{
-		Process: managedProcess,
-		Port:    processPort,
-	}
-
-	t.processMap[key] = instance
-
-	t.logger.Info("started new process",
-		zap.String("key", key),
-		zap.Int("port", processPort),
-		zap.String("file_path", filePath),
-	)
-
-	return instance, nil
+	return resp, nil
 }
 
-// getFreePort finds an available port on localhost
-func (t *SubstrateTransport) getFreePort() (int, error) {
-	listener, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		return 0, fmt.Errorf("failed to find free port: %w", err)
-	}
-	defer listener.Close()
-	
-	addr, ok := listener.Addr().(*net.TCPAddr)
-	if !ok {
-		return 0, fmt.Errorf("failed to get TCP address")
-	}
-	
-	return addr.Port, nil
-}
 
-// markProcessForRestart marks a process as needing restart
-func (t *SubstrateTransport) markProcessForRestart(key string) {
-	t.processMapMu.Lock()
-	defer t.processMapMu.Unlock()
 
-	if instance, exists := t.processMap[key]; exists {
-		// Stop the process - it will be restarted on next request
-		instance.Process.Stop()
-		delete(t.processMap, key)
-		
-		t.logger.Warn("marked process for restart due to failure",
-			zap.String("key", key),
-		)
-	}
-}
+
 
 // Compile-time check that SubstrateTransport implements necessary interfaces
 var (

@@ -3,6 +3,7 @@ package substrate
 import (
 	"context"
 	"fmt"
+	"net"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -22,11 +23,18 @@ type ProcessManagerConfig struct {
 // ProcessManager manages the lifecycle of substrate processes
 type ProcessManager struct {
 	config    ProcessManagerConfig
-	processes map[string]*ManagedProcess
+	processes map[string]*ProcessInfo
 	mu        sync.RWMutex
 	ctx       context.Context
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
+}
+
+// ProcessInfo holds information about a running process
+type ProcessInfo struct {
+	Process *ManagedProcess
+	Host    string
+	Port    int
 }
 
 // ManagedProcess represents a single managed process
@@ -53,7 +61,7 @@ func NewProcessManager(config ProcessManagerConfig) (*ProcessManager, error) {
 	
 	pm := &ProcessManager{
 		config:    config,
-		processes: make(map[string]*ManagedProcess),
+		processes: make(map[string]*ProcessInfo),
 		ctx:       ctx,
 		cancel:    cancel,
 	}
@@ -65,19 +73,36 @@ func NewProcessManager(config ProcessManagerConfig) (*ProcessManager, error) {
 	return pm, nil
 }
 
-// StartProcess starts a new managed process
-func (pm *ProcessManager) StartProcess(key string, config ProcessConfig) (*ManagedProcess, error) {
+// getOrCreateHost gets or creates a host:port for the given file
+func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	// Check if process already exists
-	if existing, exists := pm.processes[key]; exists && existing.IsRunning() {
-		return existing, nil
+	// Check if process already exists and is running
+	if info, exists := pm.processes[file]; exists && info.Process.IsRunning() {
+		info.Process.mu.Lock()
+		info.Process.LastUsed = time.Now()
+		info.Process.mu.Unlock()
+		return fmt.Sprintf("%s:%d", info.Host, info.Port), nil
+	}
+
+	// Get a free port
+	port, err := getFreePort()
+	if err != nil {
+		return "", fmt.Errorf("failed to get free port: %w", err)
+	}
+
+	host := "localhost"
+
+	// Create process config
+	config := ProcessConfig{
+		Command: file,
+		Args:    []string{host, fmt.Sprintf("%d", port)},
 	}
 
 	// Create new managed process
 	process := &ManagedProcess{
-		Key:      key,
+		Key:      file,
 		Config:   config,
 		LastUsed: time.Now(),
 		running:  false,
@@ -86,33 +111,29 @@ func (pm *ProcessManager) StartProcess(key string, config ProcessConfig) (*Manag
 
 	// Start the process
 	if err := process.start(); err != nil {
-		return nil, fmt.Errorf("failed to start process: %w", err)
+		return "", fmt.Errorf("failed to start process: %w", err)
 	}
 
-	// Store the process
-	pm.processes[key] = process
+	// Store the process info
+	info := &ProcessInfo{
+		Process: process,
+		Host:    host,
+		Port:    port,
+	}
+	pm.processes[file] = info
 
 	pm.config.Logger.Info("started process",
-		zap.String("key", key),
-		zap.String("command", config.Command),
+		zap.String("file", file),
+		zap.String("host:port", fmt.Sprintf("%s:%d", host, port)),
 		zap.Int("pid", process.Cmd.Process.Pid),
 	)
 
-	return process, nil
+	// Wait for startup
+	time.Sleep(time.Duration(pm.config.StartupTimeout))
+
+	return fmt.Sprintf("%s:%d", host, port), nil
 }
 
-// UpdateLastUsed updates the last used time for a process
-func (pm *ProcessManager) UpdateLastUsed(key string) {
-	pm.mu.RLock()
-	process, exists := pm.processes[key]
-	pm.mu.RUnlock()
-
-	if exists {
-		process.mu.Lock()
-		process.LastUsed = time.Now()
-		process.mu.Unlock()
-	}
-}
 
 // Stop stops the process manager and all managed processes
 func (pm *ProcessManager) Stop() error {
@@ -123,8 +144,8 @@ func (pm *ProcessManager) Stop() error {
 	defer pm.mu.Unlock()
 
 	var errors []error
-	for key, process := range pm.processes {
-		if err := process.Stop(); err != nil {
+	for key, info := range pm.processes {
+		if err := info.Process.Stop(); err != nil {
 			errors = append(errors, fmt.Errorf("failed to stop process %s: %w", key, err))
 		}
 	}
@@ -161,11 +182,11 @@ func (pm *ProcessManager) cleanupIdleProcesses() {
 	idleTimeout := time.Duration(pm.config.IdleTimeout)
 	now := time.Now()
 
-	for key, process := range pm.processes {
-		process.mu.RLock()
-		lastUsed := process.LastUsed
-		isRunning := process.IsRunning()
-		process.mu.RUnlock()
+	for key, info := range pm.processes {
+		info.Process.mu.RLock()
+		lastUsed := info.Process.LastUsed
+		isRunning := info.Process.IsRunning()
+		info.Process.mu.RUnlock()
 
 		if isRunning && now.Sub(lastUsed) > idleTimeout {
 			pm.config.Logger.Info("stopping idle process",
@@ -173,7 +194,7 @@ func (pm *ProcessManager) cleanupIdleProcesses() {
 				zap.Duration("idle_time", now.Sub(lastUsed)),
 			)
 
-			if err := process.Stop(); err != nil {
+			if err := info.Process.Stop(); err != nil {
 				pm.config.Logger.Error("failed to stop idle process",
 					zap.String("key", key),
 					zap.Error(err),
@@ -294,4 +315,20 @@ func isProcessAlreadyFinished(err error) bool {
 	}
 	
 	return false
+}
+
+// getFreePort finds an available port on localhost
+func getFreePort() (int, error) {
+	listener, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		return 0, fmt.Errorf("failed to find free port: %w", err)
+	}
+	defer listener.Close()
+	
+	addr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		return 0, fmt.Errorf("failed to get TCP address")
+	}
+	
+	return addr.Port, nil
 }
