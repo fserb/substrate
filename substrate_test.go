@@ -23,7 +23,6 @@ func TestSubstrateTransport_CaddyModule(t *testing.T) {
 		t.Errorf("Expected module ID %s, got %s", expectedID, moduleInfo.ID)
 	}
 
-	// Test that New() creates a valid transport
 	newTransport := moduleInfo.New()
 	if newTransport == nil {
 		t.Error("New() should return a non-nil transport")
@@ -50,7 +49,6 @@ func TestSubstrateTransport_Provision(t *testing.T) {
 		t.Fatalf("Provision failed: %v", err)
 	}
 
-	// Verify internal state was initialized
 	if transport.manager == nil {
 		t.Error("manager should be initialized")
 	}
@@ -69,7 +67,6 @@ func TestSubstrateTransport_GetFilePathFromReplacer(t *testing.T) {
 	ctx := context.WithValue(req.Context(), caddy.ReplacerCtxKey, repl)
 	req = req.WithContext(ctx)
 
-	// Test getting file path from replacer
 	repl2 := req.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 	filePath, _ := repl2.GetString("http.matchers.file.absolute")
 
@@ -92,7 +89,6 @@ func TestSubstrateTransport_GetFilePathFallback(t *testing.T) {
 	repl2 := req.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 	filePath, _ := repl2.GetString("http.matchers.file.absolute")
 
-	// Should be empty since we didn't set it
 	if filePath != "" {
 		t.Errorf("Expected empty file path, got %s", filePath)
 	}
@@ -189,7 +185,6 @@ Deno.addSignalListener("SIGTERM", () => {
 		t.Fatalf("getOrCreateHost failed: %v", err)
 	}
 
-	// Verify we got a host:port
 	if hostPort == "" {
 		t.Fatal("Host:port should not be empty")
 	}
@@ -226,7 +221,6 @@ func TestSubstrateTransport_Cleanup(t *testing.T) {
 		t.Fatalf("Provision failed: %v", err)
 	}
 
-	// Test cleanup
 	err = transport.Cleanup()
 	if err != nil {
 		t.Errorf("Cleanup should not return error, got: %v", err)

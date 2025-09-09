@@ -31,7 +31,6 @@ func TestE2E_SimpleServerStartup(t *testing.T) {
 
 	scriptPath := getTestScript(t, "simple_server.js")
 
-	// Test getOrCreateHost
 	hostPort, err := transport.manager.getOrCreateHost(scriptPath)
 	if err != nil {
 		t.Fatalf("Failed to get host:port: %v", err)
@@ -41,7 +40,6 @@ func TestE2E_SimpleServerStartup(t *testing.T) {
 		t.Errorf("Expected host:port to contain localhost:, got %s", hostPort)
 	}
 
-	// Wait for server to start
 	time.Sleep(200 * time.Millisecond)
 
 	// Make HTTP request to verify server is running
@@ -229,7 +227,6 @@ func TestE2E_EchoServer(t *testing.T) {
 		t.Fatalf("Failed to get host:port: %v", err)
 	}
 
-	// Wait for server to start
 	time.Sleep(200 * time.Millisecond)
 
 	// Test POST request with body and headers
@@ -292,7 +289,6 @@ func TestE2E_ProcessCleanup(t *testing.T) {
 		t.Fatalf("Failed to get host:port: %v", err)
 	}
 
-	// Wait for server to start
 	time.Sleep(200 * time.Millisecond)
 
 	// Verify server is running
@@ -367,7 +363,6 @@ func TestE2E_SymlinkExecution(t *testing.T) {
 		t.Errorf("Expected host:port to contain localhost:, got %s", hostPort)
 	}
 
-	// Wait for server to start
 	time.Sleep(200 * time.Millisecond)
 
 	// Make HTTP request to verify server is running and functioning correctly

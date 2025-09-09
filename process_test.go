@@ -61,7 +61,6 @@ func TestProcessManager_MultipleProcesses(t *testing.T) {
 		hostPorts = append(hostPorts, hostPort)
 	}
 
-	// Verify all processes got different host:ports
 	for i, hostPort := range hostPorts {
 		if hostPort == "" {
 			t.Errorf("Host:port %d should not be empty", i)
@@ -91,13 +90,11 @@ func TestProcessManager_DifferentFiles(t *testing.T) {
 	// Since sleep exits immediately with no args, we'll test the creation behavior
 	file := "/bin/sleep"
 
-	// First call
 	hostPort1, err := pm.getOrCreateHost(file)
 	if err != nil {
 		t.Fatalf("Failed to get host:port first time: %v", err)
 	}
 
-	// Verify we got a valid host:port
 	if hostPort1 == "" {
 		t.Error("First host:port should not be empty")
 	}
@@ -127,13 +124,11 @@ func TestProcess_Stop(t *testing.T) {
 		logger:   logger,
 	}
 
-	// Start the process
 	err := process.start()
 	if err != nil {
 		t.Fatalf("Failed to start process: %v", err)
 	}
 
-	// Stop the process
 	err = process.Stop()
 	if err != nil {
 		// For sleep processes, termination signals are expected

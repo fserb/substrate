@@ -26,7 +26,6 @@ func TestConfigureProcessSecurity_NonRoot(t *testing.T) {
 	cmd := exec.Command(scriptPath)
 	err = configureProcessSecurity(cmd, scriptPath)
 
-	// Should not error when not running as root with executable file
 	if err != nil {
 		t.Errorf("Unexpected error when not running as root: %v", err)
 	}
@@ -52,7 +51,6 @@ func TestConfigureProcessSecurity_NonExecutableFile(t *testing.T) {
 	cmd := exec.Command(scriptPath)
 	err = configureProcessSecurity(cmd, scriptPath)
 
-	// Should error because file is not executable
 	if err == nil {
 		t.Errorf("Expected error for non-executable file, but got none")
 	}
@@ -77,7 +75,6 @@ func TestConfigureProcessSecurity_ExecutableFile(t *testing.T) {
 	cmd := exec.Command(scriptPath)
 	err = configureProcessSecurity(cmd, scriptPath)
 
-	// Should not error for executable file
 	if err != nil {
 		t.Errorf("Unexpected error for executable file: %v", err)
 	}
@@ -90,7 +87,6 @@ func TestConfigureProcessSecurity_NonExistentFile(t *testing.T) {
 	cmd := exec.Command(nonExistentPath)
 	err := configureProcessSecurity(cmd, nonExistentPath)
 
-	// Should error because file doesn't exist
 	if err == nil {
 		t.Errorf("Expected error for non-existent file, but got none")
 	}
@@ -118,7 +114,6 @@ func TestConfigureProcessSecurity_Symlink(t *testing.T) {
 	cmd := exec.Command(symlinkPath)
 	err = configureProcessSecurity(cmd, symlinkPath)
 
-	// Should not error for symlinked executable file
 	if err != nil {
 		t.Errorf("Unexpected error for symlinked executable file: %v", err)
 	}
@@ -139,7 +134,6 @@ func TestConfigureProcessSecurity_Symlink(t *testing.T) {
 	cmd2 := exec.Command(nonExecSymlink)
 	err = configureProcessSecurity(cmd2, nonExecSymlink)
 
-	// Should error because symlink target is not executable
 	if err == nil {
 		t.Errorf("Expected error for symlink to non-executable file, but got none")
 	}
