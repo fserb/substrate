@@ -1,6 +1,7 @@
 package substrate
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,10 +13,14 @@ import (
 )
 
 func TestProcessManager_MultipleProcesses(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	logger := zap.NewNop()
 	pm, err := NewProcessManager(
 		caddy.Duration(time.Minute),
-		caddy.Duration(100*time.Millisecond),
+		caddy.Duration(3*time.Second), // Longer timeout for actual servers
 		logger,
 	)
 	if err != nil {
@@ -23,8 +28,14 @@ func TestProcessManager_MultipleProcesses(t *testing.T) {
 	}
 	defer pm.Stop()
 
+	// Helper function to get testdata script paths
+	getTestScript := func(filename string) string {
+		wd, _ := os.Getwd()
+		return filepath.Join(wd, "testdata", filename)
+	}
+
 	// Test basic getOrCreateHost functionality first
-	filePath := "/bin/echo"
+	filePath := getTestScript("simple_server.js")
 	hostPort, err := pm.getOrCreateHost(filePath)
 	if err != nil {
 		t.Fatalf("Failed to get host:port: %v", err)
@@ -37,10 +48,28 @@ func TestProcessManager_MultipleProcesses(t *testing.T) {
 		t.Errorf("Host:port format looks incorrect: %s", hostPort)
 	}
 
-	// Test multiple calls with different files - use actual file paths
-	files := []string{"/bin/echo", "/bin/sleep", "/bin/cat"}
-	hostPorts := make([]string, 0, len(files))
+	// Create multiple copies of the same script to test unique ports
+	tmpDir := t.TempDir()
+	files := make([]string, 3)
+	
+	// Read the simple server script content
+	scriptContent, err := os.ReadFile(getTestScript("simple_server.js"))
+	if err != nil {
+		t.Fatalf("Failed to read simple_server.js: %v", err)
+	}
 
+	// Create multiple script copies with different names
+	for i := 0; i < 3; i++ {
+		scriptPath := filepath.Join(tmpDir, fmt.Sprintf("server_%d.js", i))
+		err := os.WriteFile(scriptPath, scriptContent, 0755)
+		if err != nil {
+			t.Fatalf("Failed to create script copy %d: %v", i, err)
+		}
+		files[i] = scriptPath
+	}
+
+	// Test that each file gets a unique host:port
+	hostPorts := make([]string, 0, len(files))
 	for _, file := range files {
 		hostPort, err := pm.getOrCreateHost(file)
 		if err != nil {
@@ -49,6 +78,7 @@ func TestProcessManager_MultipleProcesses(t *testing.T) {
 		hostPorts = append(hostPorts, hostPort)
 	}
 
+	// Verify all host:ports are unique
 	for i, hostPort := range hostPorts {
 		if hostPort == "" {
 			t.Errorf("Host:port %d should not be empty", i)
@@ -177,10 +207,14 @@ func TestProcess_CrashDetection(t *testing.T) {
 }
 
 func TestProcessManager_ProcessExitCleanup(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	logger := zap.NewNop()
 	pm, err := NewProcessManager(
-		caddy.Duration(time.Minute),          // idle timeout
-		caddy.Duration(100*time.Millisecond), // startup timeout
+		caddy.Duration(time.Minute),      // idle timeout
+		caddy.Duration(500*time.Millisecond), // startup timeout - longer for server startup
 		logger,
 	)
 	if err != nil {
@@ -188,10 +222,27 @@ func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 	}
 	defer pm.Stop()
 
-	// Create a temporary script that exits with code 42
+	// Create a Deno script that starts a server but exits after a short delay
 	tmpDir := t.TempDir()
-	exitScript := filepath.Join(tmpDir, "exit.sh")
-	err = os.WriteFile(exitScript, []byte("#!/bin/bash\nexit 42"), 0755)
+	exitScript := filepath.Join(tmpDir, "exit.js")
+	scriptContent := `#!/usr/bin/env -S deno run --allow-net
+const [host, port] = Deno.args;
+
+// Start server
+const server = Deno.serve({
+  hostname: host,
+  port: parseInt(port)
+}, () => new Response("OK"));
+
+console.log("Server started, will exit with code 42 after 100ms");
+
+// Exit after short delay with code 42
+setTimeout(() => {
+  server.shutdown();
+  Deno.exit(42);
+}, 100);
+`
+	err = os.WriteFile(exitScript, []byte(scriptContent), 0755)
 	if err != nil {
 		t.Fatalf("Failed to create exit script: %v", err)
 	}
@@ -212,7 +263,7 @@ func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 	}
 
 	// Wait for the process to exit and be cleaned up (with timeout)
-	maxWait := 2 * time.Second
+	maxWait := 3 * time.Second
 	checkInterval := 10 * time.Millisecond
 	start := time.Now()
 
@@ -243,10 +294,14 @@ func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 }
 
 func TestProcessManager_NormalExitCleanup(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	logger := zap.NewNop()
 	pm, err := NewProcessManager(
 		caddy.Duration(time.Minute),          // idle timeout
-		caddy.Duration(100*time.Millisecond), // startup timeout
+		caddy.Duration(500*time.Millisecond), // startup timeout - longer for server startup
 		logger,
 	)
 	if err != nil {
@@ -254,10 +309,27 @@ func TestProcessManager_NormalExitCleanup(t *testing.T) {
 	}
 	defer pm.Stop()
 
-	// Create a temporary script that exits normally (code 0)
+	// Create a Deno script that starts a server but exits normally after a short delay
 	tmpDir := t.TempDir()
-	normalScript := filepath.Join(tmpDir, "normal.sh")
-	err = os.WriteFile(normalScript, []byte("#!/bin/bash\nexit 0"), 0755)
+	normalScript := filepath.Join(tmpDir, "normal.js")
+	scriptContent := `#!/usr/bin/env -S deno run --allow-net
+const [host, port] = Deno.args;
+
+// Start server
+const server = Deno.serve({
+  hostname: host,
+  port: parseInt(port)
+}, () => new Response("OK"));
+
+console.log("Server started, will exit normally after 100ms");
+
+// Exit normally after short delay
+setTimeout(() => {
+  server.shutdown();
+  Deno.exit(0);
+}, 100);
+`
+	err = os.WriteFile(normalScript, []byte(scriptContent), 0755)
 	if err != nil {
 		t.Fatalf("Failed to create normal exit script: %v", err)
 	}
@@ -278,7 +350,20 @@ func TestProcessManager_NormalExitCleanup(t *testing.T) {
 	}
 
 	// Wait for the process to exit normally and be cleaned up
-	time.Sleep(200 * time.Millisecond)
+	maxWait := 3 * time.Second
+	checkInterval := 10 * time.Millisecond
+	start := time.Now()
+
+	for time.Since(start) < maxWait {
+		pm.mu.RLock()
+		_, stillExists := pm.processes[normalScript]
+		pm.mu.RUnlock()
+
+		if !stillExists {
+			break // Process was cleaned up
+		}
+		time.Sleep(checkInterval)
+	}
 
 	// Verify even normally exited processes are removed from the map
 	pm.mu.RLock()
@@ -353,10 +438,14 @@ func TestValidateFilePath_Symlink(t *testing.T) {
 }
 
 func TestProcessManager_GetOrCreateHost_Symlink(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
 	logger := zap.NewNop()
 	pm, err := NewProcessManager(
 		caddy.Duration(time.Minute),
-		caddy.Duration(100*time.Millisecond),
+		caddy.Duration(3*time.Second), // Longer timeout for server startup
 		logger,
 	)
 	if err != nil {
@@ -367,16 +456,31 @@ func TestProcessManager_GetOrCreateHost_Symlink(t *testing.T) {
 	// Create a temporary directory
 	tmpDir := t.TempDir()
 
-	// Create a valid executable script
-	realScript := filepath.Join(tmpDir, "test_script.sh")
-	scriptContent := "#!/bin/bash\necho 'test output'"
+	// Create a valid Deno HTTP server script
+	realScript := filepath.Join(tmpDir, "test_server.js")
+	scriptContent := `#!/usr/bin/env -S deno run --allow-net
+const [host, port] = Deno.args;
+
+const server = Deno.serve({
+  hostname: host,
+  port: parseInt(port)
+}, () => new Response("Hello from symlinked script!"));
+
+console.log("Symlinked server started");
+
+// Graceful shutdown
+Deno.addSignalListener("SIGTERM", () => {
+  server.shutdown();
+  Deno.exit(0);
+});
+`
 	err = os.WriteFile(realScript, []byte(scriptContent), 0755)
 	if err != nil {
 		t.Fatalf("Failed to create test script: %v", err)
 	}
 
 	// Create a symlink to the script
-	symlinkPath := filepath.Join(tmpDir, "symlinked_script.sh")
+	symlinkPath := filepath.Join(tmpDir, "symlinked_server.js")
 	err = os.Symlink(realScript, symlinkPath)
 	if err != nil {
 		t.Fatalf("Failed to create symlink: %v", err)
