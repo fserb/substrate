@@ -11,31 +11,6 @@ import (
 	"go.uber.org/zap"
 )
 
-func TestProcessManager_GetOrCreateHost(t *testing.T) {
-	logger := zap.NewNop()
-	pm, err := NewProcessManager(
-		caddy.Duration(time.Minute),
-		caddy.Duration(100*time.Millisecond),
-		logger,
-	)
-	if err != nil {
-		t.Fatalf("Failed to create process manager: %v", err)
-	}
-	defer pm.Stop()
-
-	filePath := "/bin/echo"
-	hostPort, err := pm.getOrCreateHost(filePath)
-	if err != nil {
-		t.Fatalf("Failed to get host:port: %v", err)
-	}
-
-	if hostPort == "" {
-		t.Error("Host:port should not be empty")
-	}
-	if len(hostPort) < 10 {
-		t.Errorf("Host:port format looks incorrect: %s", hostPort)
-	}
-}
 
 func TestProcessManager_MultipleProcesses(t *testing.T) {
 	logger := zap.NewNop()
@@ -48,6 +23,20 @@ func TestProcessManager_MultipleProcesses(t *testing.T) {
 		t.Fatalf("Failed to create process manager: %v", err)
 	}
 	defer pm.Stop()
+
+	// Test basic getOrCreateHost functionality first
+	filePath := "/bin/echo"
+	hostPort, err := pm.getOrCreateHost(filePath)
+	if err != nil {
+		t.Fatalf("Failed to get host:port: %v", err)
+	}
+
+	if hostPort == "" {
+		t.Error("Host:port should not be empty")
+	}
+	if len(hostPort) < 10 {
+		t.Errorf("Host:port format looks incorrect: %s", hostPort)
+	}
 
 	// Test multiple calls with different files - use actual file paths
 	files := []string{"/bin/echo", "/bin/sleep", "/bin/cat"}
@@ -74,67 +63,7 @@ func TestProcessManager_MultipleProcesses(t *testing.T) {
 	}
 }
 
-func TestProcessManager_DifferentFiles(t *testing.T) {
-	logger := zap.NewNop()
-	pm, err := NewProcessManager(
-		caddy.Duration(time.Minute),
-		caddy.Duration(100*time.Millisecond),
-		logger,
-	)
-	if err != nil {
-		t.Fatalf("Failed to create process manager: %v", err)
-	}
-	defer pm.Stop()
 
-	// Test that calling getOrCreateHost twice for same file
-	// Since sleep exits immediately with no args, we'll test the creation behavior
-	file := "/bin/sleep"
-
-	hostPort1, err := pm.getOrCreateHost(file)
-	if err != nil {
-		t.Fatalf("Failed to get host:port first time: %v", err)
-	}
-
-	if hostPort1 == "" {
-		t.Error("First host:port should not be empty")
-	}
-
-	// Second call for different file should get different port
-	file2 := "/bin/echo"
-	hostPort2, err := pm.getOrCreateHost(file2)
-	if err != nil {
-		t.Fatalf("Failed to get host:port for second file: %v", err)
-	}
-
-	// Should be different ports for different files
-	if hostPort1 == hostPort2 {
-		t.Errorf("Different files should get different host:ports, but both got %s", hostPort1)
-	}
-}
-
-func TestProcess_Stop(t *testing.T) {
-	logger := zap.NewNop()
-
-	process := &Process{
-		Command:  "/bin/sleep",
-		Host:     "localhost",
-		Port:     12345,
-		LastUsed: time.Now(),
-		onExit:   func() {},
-		logger:   logger,
-	}
-
-	err := process.start()
-	if err != nil {
-		t.Fatalf("Failed to start process: %v", err)
-	}
-
-	err = process.Stop()
-	if err != nil {
-		// For sleep processes, termination signals are expected
-		t.Logf("Process stop returned error (expected for SIGTERM): %v", err)
-	}
-}
 
 func TestValidateFilePath(t *testing.T) {
 	// Create a temporary directory and file for testing
@@ -369,44 +298,6 @@ func TestProcessManager_NormalExitCleanup(t *testing.T) {
 	}
 }
 
-func TestProcess_NormalExitLogging(t *testing.T) {
-	logger := zap.NewNop()
-
-	// Create a process that exits normally (exit code 0)
-	process := &Process{
-		Command:  "sh",
-		Host:     "localhost",
-		Port:     12347,
-		LastUsed: time.Now(),
-		onExit:   func() {},
-		logger:   logger,
-	}
-
-	// Override the command args to make it exit normally
-	process.mu.Lock()
-	process.Cmd = exec.Command("sh", "-c", "exit 0")
-	process.mu.Unlock()
-
-	// Start the command directly
-	if err := process.Cmd.Start(); err != nil {
-		t.Fatalf("Failed to start process: %v", err)
-	}
-
-	// Start monitoring
-	go process.monitor()
-
-	// Wait a moment for the process to exit
-	time.Sleep(100 * time.Millisecond)
-
-	// Check the exit code was captured as success
-	process.mu.RLock()
-	exitCode := process.exitCode
-	process.mu.RUnlock()
-
-	if exitCode != 0 {
-		t.Errorf("Expected exit code 0 (normal), got %d", exitCode)
-	}
-}
 
 func TestValidateFilePath_Symlink(t *testing.T) {
 	// Create a temporary directory

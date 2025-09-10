@@ -9,7 +9,6 @@ import (
 )
 
 func TestConfigureProcessSecurity_NonRoot(t *testing.T) {
-	// Test the common case: not running as root
 	if os.Getuid() == 0 {
 		t.Skip("Test should not be run as root")
 	}
@@ -142,3 +141,4 @@ func TestConfigureProcessSecurity_Symlink(t *testing.T) {
 		t.Errorf("Expected error to mention 'not executable', got: %v", err)
 	}
 }
+
