@@ -234,7 +234,7 @@ func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 
 	logger := zap.NewNop()
 	pm, err := NewProcessManager(
-		caddy.Duration(time.Minute),      // idle timeout
+		caddy.Duration(time.Minute),          // idle timeout
 		caddy.Duration(500*time.Millisecond), // startup timeout - longer for server startup
 		logger,
 	)

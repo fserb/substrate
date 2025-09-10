@@ -15,7 +15,6 @@ import (
 	"github.com/caddyserver/caddy/v2"
 )
 
-
 func TestSubstrateTransport_GetOrStartProcess_Integration(t *testing.T) {
 	// Skip integration test if running in short mode
 	if testing.Short() {
@@ -131,7 +130,7 @@ func TestSymlinkExecution(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Get the original test script  
+	// Get the original test script
 	originalScript := filepath.Join(tempDir, "original_server.js")
 	err = os.WriteFile(originalScript, []byte(simpleServerScript), 0755)
 	if err != nil {
@@ -213,4 +212,3 @@ func setupTestTransport(t *testing.T) *SubstrateTransport {
 
 	return transport
 }
-

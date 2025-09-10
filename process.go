@@ -392,7 +392,7 @@ func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.D
 		if time.Now().After(deadline) {
 			return fmt.Errorf("timeout waiting for port %s to become ready after %v", hostPort, timeout)
 		}
-		
+
 		select {
 		case <-time.After(time.Until(deadline)):
 			return fmt.Errorf("timeout waiting for port %s to become ready after %v", hostPort, timeout)
@@ -401,7 +401,7 @@ func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.D
 			if process.Cmd.ProcessState != nil && process.Cmd.ProcessState.Exited() {
 				return fmt.Errorf("process exited before port became ready (exit code: %d)", process.Cmd.ProcessState.ExitCode())
 			}
-			
+
 			conn, err := net.DialTimeout("tcp", hostPort, 500*time.Millisecond)
 			if err == nil {
 				conn.Close()
