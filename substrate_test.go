@@ -15,10 +15,6 @@ import (
 	"github.com/caddyserver/caddy/v2"
 )
 
-
-
-
-
 func TestSubstrateTransport_GetOrStartProcess_Integration(t *testing.T) {
 	// Skip integration test if running in short mode
 	if testing.Short() {
@@ -67,7 +63,6 @@ Deno.addSignalListener("SIGTERM", () => {
 	if err != nil {
 		t.Fatalf("Failed to write test script: %v", err)
 	}
-
 
 	// Setup transport
 	transport := &SubstrateTransport{
@@ -508,7 +503,3 @@ func getTestScript(t *testing.T, filename string) string {
 
 	return scriptPath
 }
-
-
-
-

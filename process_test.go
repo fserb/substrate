@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 )
 
-
 func TestProcessManager_MultipleProcesses(t *testing.T) {
 	logger := zap.NewNop()
 	pm, err := NewProcessManager(
@@ -62,8 +61,6 @@ func TestProcessManager_MultipleProcesses(t *testing.T) {
 		}
 	}
 }
-
-
 
 func TestValidateFilePath(t *testing.T) {
 	// Create a temporary directory and file for testing
@@ -297,7 +294,6 @@ func TestProcessManager_NormalExitCleanup(t *testing.T) {
 		t.Error("Host:port should not be empty")
 	}
 }
-
 
 func TestValidateFilePath_Symlink(t *testing.T) {
 	// Create a temporary directory

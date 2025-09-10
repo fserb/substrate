@@ -18,6 +18,10 @@ function test {
   CGO_ENABLED=0 go test . "$@"
 }
 
+function e2e {
+  CGO_ENABLED=0 go test ./e2e -v "$@"
+}
+
 
 function help {
   echo "$0 <task> <args>"

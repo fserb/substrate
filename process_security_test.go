@@ -141,4 +141,3 @@ func TestConfigureProcessSecurity_Symlink(t *testing.T) {
 		t.Errorf("Expected error to mention 'not executable', got: %v", err)
 	}
 }
-

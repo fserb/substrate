@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy"
 	"go.uber.org/zap"
 )
@@ -98,6 +99,36 @@ func (t *SubstrateTransport) Cleanup() error {
 	return nil
 }
 
+func (t *SubstrateTransport) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
+	for d.Next() {
+		for d.NextBlock(0) {
+			switch d.Val() {
+			case "idle_timeout":
+				if !d.NextArg() {
+					return d.ArgErr()
+				}
+				dur, err := time.ParseDuration(d.Val())
+				if err != nil {
+					return d.Errf("parsing idle_timeout: %v", err)
+				}
+				t.IdleTimeout = caddy.Duration(dur)
+			case "startup_timeout":
+				if !d.NextArg() {
+					return d.ArgErr()
+				}
+				dur, err := time.ParseDuration(d.Val())
+				if err != nil {
+					return d.Errf("parsing startup_timeout: %v", err)
+				}
+				t.StartupTimeout = caddy.Duration(dur)
+			default:
+				return d.Errf("unknown directive: %s", d.Val())
+			}
+		}
+	}
+	return nil
+}
+
 func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	repl := req.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 
@@ -125,9 +156,10 @@ func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error
 }
 
 var (
-	_ caddy.Module       = (*SubstrateTransport)(nil)
-	_ caddy.Provisioner  = (*SubstrateTransport)(nil)
-	_ caddy.Validator    = (*SubstrateTransport)(nil)
-	_ caddy.CleanerUpper = (*SubstrateTransport)(nil)
-	_ http.RoundTripper  = (*SubstrateTransport)(nil)
+	_ caddy.Module          = (*SubstrateTransport)(nil)
+	_ caddy.Provisioner     = (*SubstrateTransport)(nil)
+	_ caddy.Validator       = (*SubstrateTransport)(nil)
+	_ caddy.CleanerUpper    = (*SubstrateTransport)(nil)
+	_ http.RoundTripper     = (*SubstrateTransport)(nil)
+	_ caddyfile.Unmarshaler = (*SubstrateTransport)(nil)
 )
