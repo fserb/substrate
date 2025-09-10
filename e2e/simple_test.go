@@ -6,14 +6,7 @@ import (
 )
 
 func TestSimpleSubstrateRequest(t *testing.T) {
-	caddyfile := `{
-	{{GLOBAL}}
-}
-
-:{{HTTP_PORT}} {
-	root {{TEMPDIR}}
-
-	@js_files {
+	serverBlock := `@js_files {
 		path *.js
 		file {path}
 	}
@@ -24,8 +17,7 @@ func TestSimpleSubstrateRequest(t *testing.T) {
 			startup_timeout 5s
 		}
 		to localhost
-	}
-}`
+	}`
 
 	jsServer := `#!/usr/bin/env -S deno run --allow-net
 const [host, port] = Deno.args;
@@ -56,7 +48,7 @@ Deno.addSignalListener("SIGTERM", () => {
 		{Path: "hello.js", Content: jsServer, Mode: 0755},
 	}
 
-	ctx := RunE2ETest(t, caddyfile, files)
+	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
 	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/hello.js", 200, fmt.Sprintf("Hello from substrate process!\nURL: %s/hello.js", ctx.BaseURL))
