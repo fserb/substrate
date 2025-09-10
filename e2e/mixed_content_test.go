@@ -17,13 +17,11 @@ func TestMixedStaticAndDynamicContent(t *testing.T) {
 
 	file_server`
 
-	// Dynamic server
 	dynamicServer := `#!/usr/bin/env -S deno run --allow-net
 Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	return new Response("Dynamic content from: " + req.url);
 });`
 
-	// Static HTML file
 	indexHTML := `<!DOCTYPE html>
 <html>
 <head><title>Mixed Content Test</title></head>
@@ -33,7 +31,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 </body>
 </html>`
 
-	// Static CSS file
 	styleCSS := `body {
 	font-family: Arial, sans-serif;
 	margin: 20px;
@@ -45,7 +42,6 @@ h1 {
 	border-bottom: 2px solid #007acc;
 }`
 
-	// Static JavaScript file (not executable)
 	clientJS := `// Client-side JavaScript
 document.addEventListener('DOMContentLoaded', function() {
 	console.log('Static JavaScript loaded');
@@ -58,24 +54,20 @@ document.addEventListener('DOMContentLoaded', function() {
 	files := []TestFile{
 		{Path: "index.html", Content: indexHTML, Mode: 0644},
 		{Path: "style.css", Content: styleCSS, Mode: 0644},
-		{Path: "client.js", Content: clientJS, Mode: 0644}, // Not executable
+		{Path: "client.js", Content: clientJS, Mode: 0644},          // Not executable
 		{Path: "api/server.js", Content: dynamicServer, Mode: 0755}, // Executable - becomes server
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	// Test static HTML file
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/index.html", 200, indexHTML)
+	ctx.AssertGet("/index.html", indexHTML)
 
-	// Test static CSS file
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/style.css", 200, styleCSS)
+	ctx.AssertGet("/style.css", styleCSS)
 
-	// Test static JavaScript file (served as static, not executed)
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/client.js", 200, clientJS)
+	ctx.AssertGet("/client.js", clientJS)
 
-	// Test dynamic JavaScript server
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/api/server.js", 200, "Dynamic content from: "+ctx.BaseURL+"/api/server.js")
+	ctx.AssertGet("/api/server.js", "Dynamic content from: "+ctx.BaseURL+"/api/server.js")
 }
 
 func TestDifferentFileExtensions(t *testing.T) {
@@ -101,28 +93,24 @@ func TestDifferentFileExtensions(t *testing.T) {
 
 	file_server`
 
-	// Python server (simulated with Deno for consistency)
 	pythonServer := `#!/usr/bin/env -S deno run --allow-net
 // Simulating Python server
 Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	return new Response("Python-like server response from: " + req.url);
 });`
 
-	// Shell script server (simulated with Deno for consistency)
 	shellServer := `#!/usr/bin/env -S deno run --allow-net
 // Simulating shell script server
 Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	return new Response("Shell-like server response from: " + req.url);
 });`
 
-	// Static text file
 	readmeTxt := `# Project README
 
 This is a static text file that should be served directly.
 
 It contains information about the project.`
 
-	// Static JSON file
 	configJSON := `{
 	"name": "substrate-test",
 	"version": "3.0.0",
@@ -140,17 +128,13 @@ It contains information about the project.`
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	// Test Python server (proxied)
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/server.py", 200, "Python-like server response from: "+ctx.BaseURL+"/server.py")
+	ctx.AssertGet("/server.py", "Python-like server response from: "+ctx.BaseURL+"/server.py")
 
-	// Test Shell script server (proxied)
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/script.sh", 200, "Shell-like server response from: "+ctx.BaseURL+"/script.sh")
+	ctx.AssertGet("/script.sh", "Shell-like server response from: "+ctx.BaseURL+"/script.sh")
 
-	// Test static text file
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/README.txt", 200, readmeTxt)
+	ctx.AssertGet("/README.txt", readmeTxt)
 
-	// Test static JSON file
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/config.json", 200, configJSON)
+	ctx.AssertGet("/config.json", configJSON)
 }
 
 func TestNestedDirectoryStructure(t *testing.T) {
@@ -166,14 +150,12 @@ func TestNestedDirectoryStructure(t *testing.T) {
 
 	file_server`
 
-	// API server in subdirectory
 	apiServer := `#!/usr/bin/env -S deno run --allow-net
 Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	const url = new URL(req.url);
 	return new Response("API endpoint: " + url.pathname);
 });`
 
-	// Static files in various directories
 	rootHTML := `<!DOCTYPE html><html><body><h1>Root Page</h1></body></html>`
 	staticHTML := `<!DOCTYPE html><html><body><h1>Static Page</h1></body></html>`
 	staticJS := `// Static JS in static directory
@@ -190,14 +172,11 @@ console.log("This is not a server");`
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	// Test root static file
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/index.html", 200, rootHTML)
+	ctx.AssertGet("/index.html", rootHTML)
 
-	// Test API endpoints (proxied)
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/api/users.js", 200, "API endpoint: /api/users.js")
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/api/orders.js", 200, "API endpoint: /api/orders.js")
+	ctx.AssertGet("/api/users.js", "API endpoint: /api/users.js")
+	ctx.AssertGet("/api/orders.js", "API endpoint: /api/orders.js")
 
-	// Test static files in subdirectory
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/static/page.html", 200, staticHTML)
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/static/script.js", 200, staticJS)
+	ctx.AssertGet("/static/page.html", staticHTML)
+	ctx.AssertGet("/static/script.js", staticJS)
 }

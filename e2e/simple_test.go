@@ -30,6 +30,5 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/hello.js", 200, fmt.Sprintf("Hello from substrate process!\nURL: %s/hello.js", ctx.BaseURL))
+	ctx.AssertGet("/hello.js", fmt.Sprintf("Hello from substrate process!\nURL: %s/hello.js", ctx.BaseURL))
 }
-

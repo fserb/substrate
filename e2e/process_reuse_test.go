@@ -17,7 +17,6 @@ func TestProcessReusesForMultipleRequests(t *testing.T) {
 		to localhost
 	}`
 
-	// Server that counts requests to verify same process is reused
 	counterServer := `#!/usr/bin/env -S deno run --allow-net
 let count = 0;
 Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
@@ -32,18 +31,16 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	// Make multiple requests and verify the counter increments
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/counter.js", 200, "Request #1")
-	
-	// Small delay to ensure requests are sequential
+	ctx.AssertGet("/counter.js", "Request #1")
+
 	time.Sleep(10 * time.Millisecond)
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/counter.js", 200, "Request #2")
-	
+	ctx.AssertGet("/counter.js", "Request #2")
+
 	time.Sleep(10 * time.Millisecond)
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/counter.js", 200, "Request #3")
-	
+	ctx.AssertGet("/counter.js", "Request #3")
+
 	time.Sleep(10 * time.Millisecond)
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/counter.js", 200, "Request #4")
+	ctx.AssertGet("/counter.js", "Request #4")
 }
 
 func TestDifferentFilesGetDifferentProcesses(t *testing.T) {
@@ -57,7 +54,6 @@ func TestDifferentFilesGetDifferentProcesses(t *testing.T) {
 		to localhost
 	}`
 
-	// Server that reports its process info
 	serverTemplate := `#!/usr/bin/env -S deno run --allow-net
 const filename = "%s";
 let count = 0;
@@ -74,9 +70,8 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	// Test that each file gets its own process with independent counters
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/server1.js", 200, "server1 request #1")
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/server2.js", 200, "server2 request #1")
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/server1.js", 200, "server1 request #2")
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/server2.js", 200, "server2 request #2")
+	ctx.AssertGet("/server1.js", "server1 request #1")
+	ctx.AssertGet("/server2.js", "server2 request #1")
+	ctx.AssertGet("/server1.js", "server1 request #2")
+	ctx.AssertGet("/server2.js", "server2 request #2")
 }

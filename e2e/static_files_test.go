@@ -5,7 +5,6 @@ import (
 )
 
 func TestStaticFilesAreServedNormally(t *testing.T) {
-	// Server block that only proxies .js files, leaves other files as static
 	serverBlock := `@js_files {
 		path *.js
 		file {path}
@@ -43,18 +42,14 @@ It should be served directly by Caddy without going through substrate.`
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	// Test that .js file is proxied through substrate
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/app.js", 200, "Dynamic JS response")
+	ctx.AssertGet("/app.js", "Dynamic JS response")
 
-	// Test that .html file is served statically
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/index.html", 200, staticHTML)
+	ctx.AssertGet("/index.html", staticHTML)
 
-	// Test that .txt file is served statically
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/readme.txt", 200, staticText)
+	ctx.AssertGet("/readme.txt", staticText)
 }
 
 func TestOnlyMatchedFilesAreProxied(t *testing.T) {
-	// Server block that only proxies files ending with .app.js
 	serverBlock := `@app_files {
 		path *.app.js
 		file {path}
@@ -83,9 +78,7 @@ console.log("Hello World");`
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	// Test that .app.js file is proxied through substrate
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/main.app.js", 200, "App server response")
+	ctx.AssertGet("/main.app.js", "App server response")
 
-	// Test that regular .js file is served statically
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/regular.js", 200, regularJS)
+	ctx.AssertGet("/regular.js", regularJS)
 }

@@ -19,20 +19,17 @@ func TestMissingFileReturnsError(t *testing.T) {
 
 	file_server`
 
-	// No files created - requesting missing file
 	files := []TestFile{}
 
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	// Request a file that doesn't exist
 	resp, err := http.Get(ctx.BaseURL + "/nonexistent.js")
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// Should return 404 for missing file (handled by Caddy's file_server)
 	if resp.StatusCode != 404 {
 		t.Errorf("Expected status 404 for missing file, got %d", resp.StatusCode)
 	}
@@ -51,7 +48,6 @@ func TestSlowStartupHandling(t *testing.T) {
 		to localhost
 	}`
 
-	// Server that takes time to start up
 	slowStartupServer := `#!/usr/bin/env -S deno run --allow-net
 console.log("Starting slow server...");
 
@@ -70,12 +66,10 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	// Request should succeed after startup timeout
 	start := time.Now()
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/slow.js", 200, "Slow server finally responded!")
+	ctx.AssertGet("/slow.js", "Slow server finally responded!")
 	duration := time.Since(start)
 
-	// Should take at least 300ms due to slow startup
 	if duration < 300*time.Millisecond {
 		t.Errorf("Request completed too quickly: %v", duration)
 	}
@@ -96,7 +90,6 @@ func TestVerySlowStartupTimeout(t *testing.T) {
 		to localhost
 	}`
 
-	// Server that takes longer than the timeout to start
 	verySlowServer := `#!/usr/bin/env -S deno run --allow-net
 console.log("Starting very slow server...");
 
@@ -115,14 +108,12 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	// Request should timeout and return error
 	resp, err := http.Get(ctx.BaseURL + "/very_slow.js")
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// Should return 502 or 503 for startup timeout
 	if resp.StatusCode != 502 && resp.StatusCode != 503 {
 		t.Errorf("Expected status 502 or 503 for startup timeout, got %d", resp.StatusCode)
 	}
@@ -141,7 +132,6 @@ func TestServerThatFailsToStart(t *testing.T) {
 		to localhost
 	}`
 
-	// Server that fails to start (invalid Deno syntax)
 	failingServer := `#!/usr/bin/env -S deno run --allow-net
 // This will cause a syntax error
 this is not valid javascript code!!!
@@ -156,14 +146,12 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	// Request should fail because server can't start
 	resp, err := http.Get(ctx.BaseURL + "/failing.js")
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// Should return 502 or 503 for failed startup
 	if resp.StatusCode != 502 && resp.StatusCode != 503 {
 		t.Errorf("Expected status 502 or 503 for failed startup, got %d", resp.StatusCode)
 	}
@@ -182,7 +170,6 @@ func TestServerThatBindsToWrongPort(t *testing.T) {
 		to localhost
 	}`
 
-	// Server that ignores the provided port and binds to a different one
 	wrongPortServer := `#!/usr/bin/env -S deno run --allow-net
 console.log("Args:", Deno.args);
 // Ignore the provided port and use a different one
@@ -197,14 +184,12 @@ Deno.serve({hostname: "127.0.0.1", port: 9999}, (req) => {
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	// Request should fail because server isn't listening on expected port
 	resp, err := http.Get(ctx.BaseURL + "/wrong_port.js")
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// Should return 502 or 503 because connection to expected port fails
 	if resp.StatusCode != 502 && resp.StatusCode != 503 {
 		t.Errorf("Expected status 502 or 503 for wrong port, got %d", resp.StatusCode)
 	}

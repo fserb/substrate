@@ -47,7 +47,7 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
 	}
-	
+
 	req.Header.Set("X-Custom-Header", "test-value")
 	req.Header.Set("User-Agent", "substrate-test/1.0")
 	req.Header.Set("Accept", "application/json")

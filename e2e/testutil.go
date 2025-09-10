@@ -26,11 +26,19 @@ type E2ETestContext struct {
 	ExpectedResponse string
 }
 
+func (ctx *E2ETestContext) AssertGet(path, expectedBody string) {
+	ctx.Tester.AssertGetResponse(ctx.BaseURL+path, 200, expectedBody)
+}
+
+func (ctx *E2ETestContext) AssertGetStatus(path string, expectedStatus int) {
+	ctx.Tester.AssertGetResponse(ctx.BaseURL+path, expectedStatus, "")
+}
+
 func (ctx *E2ETestContext) TearDown() {
 	if ctx.TempDir != "" {
 		os.RemoveAll(ctx.TempDir)
 	}
-	
+
 	// Clean up process manager pool to ensure test isolation
 	if err := substrate.CleanupProcessPool(); err != nil {
 		ctx.T.Logf("Warning: failed to cleanup process pool: %v", err)
@@ -109,4 +117,3 @@ func getFreePort() (int, error) {
 
 	return addr.Port, nil
 }
-
