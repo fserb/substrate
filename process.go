@@ -139,7 +139,7 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 			zap.Int("attempt", attempt),
 		)
 
-		if err := pm.waitForPortReady(host, port, time.Duration(pm.startupTimeout)); err != nil {
+		if err := pm.waitForPortReady(host, port, time.Duration(pm.startupTimeout), process); err != nil {
 			if pm.isPortInUse(host, port) {
 				pm.logger.Warn("port stolen after process start, retrying",
 					zap.Int("attempt", attempt),
@@ -153,11 +153,10 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 				}
 				return "", fmt.Errorf("port conflicts persist after %d attempts", maxRetries)
 			}
-			pm.logger.Warn("process may not be ready to accept connections",
-				zap.String("file", file),
-				zap.String("host:port", fmt.Sprintf("%s:%d", host, port)),
-				zap.Error(err),
-			)
+			// Process failed to start properly - clean up and return error
+			process.Stop()
+			delete(pm.processes, file)
+			return "", fmt.Errorf("process startup failed: %w", err)
 		}
 		return fmt.Sprintf("%s:%d", host, port), nil
 	}
@@ -381,7 +380,7 @@ func (pm *ProcessManager) isPortInUse(host string, port int) bool {
 	return true
 }
 
-func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.Duration) error {
+func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.Duration, process *Process) error {
 	deadline := time.Now().Add(timeout)
 	hostPort := fmt.Sprintf("%s:%d", host, port)
 
@@ -389,10 +388,20 @@ func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.D
 	defer ticker.Stop()
 
 	for {
+		// Check if deadline has already passed to avoid negative duration panic
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for port %s to become ready after %v", hostPort, timeout)
+		}
+		
 		select {
 		case <-time.After(time.Until(deadline)):
 			return fmt.Errorf("timeout waiting for port %s to become ready after %v", hostPort, timeout)
 		case <-ticker.C:
+			// Check if process is still alive before trying to connect
+			if process.Cmd.ProcessState != nil && process.Cmd.ProcessState.Exited() {
+				return fmt.Errorf("process exited before port became ready (exit code: %d)", process.Cmd.ProcessState.ExitCode())
+			}
+			
 			conn, err := net.DialTimeout("tcp", hostPort, 500*time.Millisecond)
 			if err == nil {
 				conn.Close()

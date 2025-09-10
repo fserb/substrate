@@ -39,7 +39,7 @@ reverse_proxy @js_files {
 const [host, port] = Deno.args;
 
 Deno.serve({ 
-  hostname: host === "localhost" ? "127.0.0.1" : host, 
+  hostname: host, 
   port: parseInt(port) 
 }, (req) => {
   return new Response('Hello from Substrate!');

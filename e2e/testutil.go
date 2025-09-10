@@ -8,8 +8,7 @@ import (
 	"testing"
 
 	"github.com/caddyserver/caddy/v2/caddytest"
-
-	_ "github.com/fserb/substrate"
+	"github.com/fserb/substrate"
 )
 
 type TestFile struct {
@@ -30,6 +29,11 @@ type E2ETestContext struct {
 func (ctx *E2ETestContext) TearDown() {
 	if ctx.TempDir != "" {
 		os.RemoveAll(ctx.TempDir)
+	}
+	
+	// Clean up process manager pool to ensure test isolation
+	if err := substrate.CleanupProcessPool(); err != nil {
+		ctx.T.Logf("Warning: failed to cleanup process pool: %v", err)
 	}
 }
 

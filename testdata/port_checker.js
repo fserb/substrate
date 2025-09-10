@@ -12,7 +12,7 @@ const expectedPort = parseInt(port);
 
 try {
   const server = Deno.serve({ 
-    hostname: host === "localhost" ? "127.0.0.1" : host, 
+    hostname: host, 
     port: expectedPort 
   }, (req) => {
     return new Response(`Port checker server

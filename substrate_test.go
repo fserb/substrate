@@ -40,7 +40,7 @@ if (!host || !port) {
 }
 
 const server = Deno.serve({
-  hostname: host === "localhost" ? "127.0.0.1" : host,
+  hostname: host,
   port: parseInt(port)
 }, (req) => {
   return new Response("Hello from substrate process!", {

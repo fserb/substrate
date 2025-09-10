@@ -12,7 +12,7 @@ let requestCount = 0;
 const maxReq = parseInt(maxRequests);
 
 const server = Deno.serve({ 
-  hostname: host === "localhost" ? "127.0.0.1" : host, 
+  hostname: host, 
   port: parseInt(port) 
 }, (req) => {
   requestCount++;

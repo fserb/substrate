@@ -14,7 +14,7 @@ console.log("Starting slow startup process...");
 await new Promise(resolve => setTimeout(resolve, 2000));
 
 const server = Deno.serve({ 
-  hostname: host === "localhost" ? "127.0.0.1" : host, 
+  hostname: host, 
   port: parseInt(port) 
 }, (req) => {
   return new Response(`Slow startup server ready!

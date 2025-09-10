@@ -9,7 +9,7 @@ if (!host || !port) {
 }
 
 const server = Deno.serve({ 
-  hostname: host === "localhost" ? "127.0.0.1" : host, 
+  hostname: host, 
   port: parseInt(port) 
 }, async (req) => {
   const url = new URL(req.url);

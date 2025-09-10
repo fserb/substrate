@@ -17,6 +17,13 @@ func init() {
 	caddy.RegisterModule(SubstrateTransport{})
 }
 
+// CleanupProcessPool removes the process manager from the pool.
+// This is primarily used for test cleanup to ensure test isolation.
+func CleanupProcessPool() error {
+	_, err := processPool.Delete("process_manager")
+	return err
+}
+
 type SubstrateTransport struct {
 	IdleTimeout    caddy.Duration `json:"idle_timeout,omitempty"`
 	StartupTimeout caddy.Duration `json:"startup_timeout,omitempty"`

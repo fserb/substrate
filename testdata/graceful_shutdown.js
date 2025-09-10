@@ -12,7 +12,7 @@ let shutdownRequested = false;
 let activeConnections = 0;
 
 const server = Deno.serve({ 
-  hostname: host === "localhost" ? "127.0.0.1" : host, 
+  hostname: host, 
   port: parseInt(port) 
 }, async (req) => {
   activeConnections++;
