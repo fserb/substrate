@@ -12,6 +12,34 @@ import (
 	"go.uber.org/zap"
 )
 
+const simpleServerScript = `#!/usr/bin/env -S deno run --allow-net
+// Simple HTTP server for testing substrate transport
+
+const [host, port] = Deno.args;
+
+if (!host || !port) {
+  console.error("Usage: simple_server.js <host> <port>");
+  Deno.exit(1);
+}
+
+const server = Deno.serve({ 
+  hostname: host, 
+  port: parseInt(port) 
+}, (req) => {
+  return new Response(` + "`Hello from substrate process!\nHost: ${host}\nPort: ${port}\nURL: ${req.url}\nMethod: ${req.method}\nUser-Agent: ${req.headers.get(\"user-agent\") ?? \"unknown\"}`" + `, {
+    headers: { "Content-Type": "text/plain" }
+  });
+});
+
+console.log(` + "`Server running at http://${host}:${port}/`" + `);
+
+// Graceful shutdown
+Deno.addSignalListener("SIGTERM", () => {
+  console.log("Received SIGTERM, shutting down gracefully");
+  server.shutdown();
+  Deno.exit(0);
+});`
+
 func TestProcessManager_MultipleProcesses(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -28,15 +56,15 @@ func TestProcessManager_MultipleProcesses(t *testing.T) {
 	}
 	defer pm.Stop()
 
-	// Helper function to get testdata script paths
-	getTestScript := func(filename string) string {
-		wd, _ := os.Getwd()
-		return filepath.Join(wd, "testdata", filename)
+	// Test basic getOrCreateHost functionality first
+	tmpDir := t.TempDir()
+	testScript := filepath.Join(tmpDir, "test_server.js")
+	err = os.WriteFile(testScript, []byte(simpleServerScript), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create test script: %v", err)
 	}
 
-	// Test basic getOrCreateHost functionality first
-	filePath := getTestScript("simple_server.js")
-	hostPort, err := pm.getOrCreateHost(filePath)
+	hostPort, err := pm.getOrCreateHost(testScript)
 	if err != nil {
 		t.Fatalf("Failed to get host:port: %v", err)
 	}
@@ -49,19 +77,12 @@ func TestProcessManager_MultipleProcesses(t *testing.T) {
 	}
 
 	// Create multiple copies of the same script to test unique ports
-	tmpDir := t.TempDir()
 	files := make([]string, 3)
-	
-	// Read the simple server script content
-	scriptContent, err := os.ReadFile(getTestScript("simple_server.js"))
-	if err != nil {
-		t.Fatalf("Failed to read simple_server.js: %v", err)
-	}
 
 	// Create multiple script copies with different names
 	for i := 0; i < 3; i++ {
 		scriptPath := filepath.Join(tmpDir, fmt.Sprintf("server_%d.js", i))
-		err := os.WriteFile(scriptPath, scriptContent, 0755)
+		err := os.WriteFile(scriptPath, []byte(simpleServerScript), 0755)
 		if err != nil {
 			t.Fatalf("Failed to create script copy %d: %v", i, err)
 		}

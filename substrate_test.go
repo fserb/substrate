@@ -15,6 +15,7 @@ import (
 	"github.com/caddyserver/caddy/v2"
 )
 
+
 func TestSubstrateTransport_GetOrStartProcess_Integration(t *testing.T) {
 	// Skip integration test if running in short mode
 	if testing.Short() {
@@ -123,15 +124,19 @@ func TestSymlinkExecution(t *testing.T) {
 	transport := setupTestTransport(t)
 	defer transport.Cleanup()
 
-	// Get the original test script
-	originalScript := getTestScript(t, "simple_server.js")
-
 	// Create a temporary directory for the symlink
 	tempDir, err := os.MkdirTemp("", "substrate-symlink-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
+
+	// Get the original test script  
+	originalScript := filepath.Join(tempDir, "original_server.js")
+	err = os.WriteFile(originalScript, []byte(simpleServerScript), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create original script: %v", err)
+	}
 
 	// Create a symlink to the original script
 	symlinkPath := filepath.Join(tempDir, "symlinked_server.js")
@@ -209,16 +214,3 @@ func setupTestTransport(t *testing.T) *SubstrateTransport {
 	return transport
 }
 
-func getTestScript(t *testing.T, filename string) string {
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get working directory: %v", err)
-	}
-
-	scriptPath := filepath.Join(wd, "testdata", filename)
-	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
-		t.Fatalf("Test script not found: %s", scriptPath)
-	}
-
-	return scriptPath
-}
