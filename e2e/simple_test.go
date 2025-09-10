@@ -12,36 +12,15 @@ func TestSimpleSubstrateRequest(t *testing.T) {
 	}
 
 	reverse_proxy @js_files {
-		transport substrate {
-			idle_timeout 5m
-			startup_timeout 5s
-		}
+		transport substrate
 		to localhost
 	}`
 
 	jsServer := `#!/usr/bin/env -S deno run --allow-net
-const [host, port] = Deno.args;
-
-if (!host || !port) {
-  console.error("Usage: hello.js <host> <port>");
-  Deno.exit(1);
-}
-
-const server = Deno.serve({
-    hostname: host === "localhost" ? "127.0.0.1" : host,
-    port: parseInt(port)
-}, (req) => {
-    return new Response("Hello from substrate process!\nURL: " + req.url, {
-        headers: { "Content-Type": "text/plain" }
-    });
-});
-
-console.log("Server running at http://" + host + ":" + port + "/");
-
-Deno.addSignalListener("SIGTERM", () => {
-    console.log("Received SIGTERM, shutting down gracefully");
-    server.shutdown();
-    Deno.exit(0);
+Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
+	return new Response("Hello from substrate process!\nURL: " + req.url, {
+    headers: { "Content-Type": "text/plain" }
+  });
 });`
 
 	files := []TestFile{
@@ -53,3 +32,4 @@ Deno.addSignalListener("SIGTERM", () => {
 
 	ctx.Tester.AssertGetResponse(ctx.BaseURL+"/hello.js", 200, fmt.Sprintf("Hello from substrate process!\nURL: %s/hello.js", ctx.BaseURL))
 }
+
