@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"net/http"
 	"testing"
 	"time"
 )
@@ -24,15 +23,7 @@ func TestMissingFileReturnsError(t *testing.T) {
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	resp, err := http.Get(ctx.BaseURL + "/nonexistent.js")
-	if err != nil {
-		t.Fatalf("Request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 404 {
-		t.Errorf("Expected status 404 for missing file, got %d", resp.StatusCode)
-	}
+	ctx.AssertGetStatus("/nonexistent.js", 404)
 }
 
 func TestSlowStartupHandling(t *testing.T) {
@@ -108,17 +99,7 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	resp, err := http.Get(ctx.BaseURL + "/very_slow.js")
-	if err != nil {
-		t.Fatalf("Request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 502 && resp.StatusCode != 503 {
-		t.Errorf("Expected status 502 or 503 for startup timeout, got %d", resp.StatusCode)
-	}
-
-	t.Logf("Startup timeout returned status: %d", resp.StatusCode)
+	ctx.AssertGetStatus("/very_slow.js", 502)
 }
 
 func TestServerThatFailsToStart(t *testing.T) {
@@ -174,15 +155,6 @@ Deno.serve({hostname: "127.0.0.1", port: 9999}, (req) => {
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	resp, err := http.Get(ctx.BaseURL + "/wrong_port.js")
-	if err != nil {
-		t.Fatalf("Request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 502 && resp.StatusCode != 503 {
-		t.Errorf("Expected status 502 or 503 for wrong port, got %d", resp.StatusCode)
-	}
-
-	t.Logf("Wrong port server returned status: %d", resp.StatusCode)
+	ctx.AssertGetStatus("/wrong_port.js", 502)
 }
+
