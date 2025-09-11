@@ -146,17 +146,7 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	ctx := RunE2ETest(t, serverBlock, files)
 	defer ctx.TearDown()
 
-	resp, err := http.Get(ctx.BaseURL + "/failing.js")
-	if err != nil {
-		t.Fatalf("Request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 502 && resp.StatusCode != 503 {
-		t.Errorf("Expected status 502 or 503 for failed startup, got %d", resp.StatusCode)
-	}
-
-	t.Logf("Failed startup returned status: %d", resp.StatusCode)
+	ctx.AssertGetStatus("/failing.js", 502)
 }
 
 func TestServerThatBindsToWrongPort(t *testing.T) {
