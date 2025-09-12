@@ -22,16 +22,9 @@ func TestConcurrentRequestsToSameProcess(t *testing.T) {
 let requestCount = 0;
 
 Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) => {
-	const requestId = ++requestCount;
-	
 	await new Promise(resolve => setTimeout(resolve, 10));
-	
-	const response = {
-		requestId: requestId,
-		totalRequests: requestCount
-	};
-	
-	return new Response(JSON.stringify(response));
+
+	return new Response((++requestCount).toString());
 });`
 
 	files := []TestFile{
@@ -43,8 +36,8 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) =
 
 	const numRequests = 3
 	var wg sync.WaitGroup
-	results := make([]string, numRequests)
-	errors := make([]error, numRequests)
+	var mu sync.Mutex
+	seenNumbers := make(map[string]bool)
 
 	for i := 0; i < numRequests; i++ {
 		wg.Add(1)
@@ -53,32 +46,39 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) =
 
 			resp, err := http.Get(ctx.BaseURL + "/concurrent.js")
 			if err != nil {
-				errors[index] = err
+				t.Errorf("Request %d failed: %v", index, err)
 				return
 			}
 			defer resp.Body.Close()
 
 			if resp.StatusCode != 200 {
-				errors[index] = fmt.Errorf("status %d", resp.StatusCode)
+				t.Errorf("Request %d got status %d", index, resp.StatusCode)
 				return
 			}
 
 			body := make([]byte, 1024)
 			n, _ := resp.Body.Read(body)
-			results[index] = string(body[:n])
+			result := string(body[:n])
+			if result == "" {
+				t.Errorf("Request %d got empty result", index)
+				return
+			}
+
+			mu.Lock()
+			if seenNumbers[result] {
+				t.Errorf("Request %d got duplicate number: %s", index, result)
+			} else {
+				seenNumbers[result] = true
+				t.Logf("Request %d result: %s", index, result)
+			}
+			mu.Unlock()
 		}(i)
 	}
 
 	wg.Wait()
 
-	for i, result := range results {
-		if errors[i] != nil {
-			t.Errorf("Request %d failed: %v", i, errors[i])
-		} else if result == "" {
-			t.Errorf("Request %d got empty result", i)
-		} else {
-			t.Logf("Request %d result: %s", i, result)
-		}
+	if len(seenNumbers) != numRequests {
+		t.Errorf("Expected %d unique numbers, got %d", numRequests, len(seenNumbers))
 	}
 }
 
@@ -98,11 +98,9 @@ const serverName = "%s";
 let requestCount = 0;
 
 Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) => {
-	requestCount++;
-	
 	await new Promise(resolve => setTimeout(resolve, 50));
-	
-	return new Response(serverName + " request #" + requestCount);
+
+	return new Response(serverName + " request #" + (++requestCount));
 });`
 
 	files := []TestFile{
@@ -115,13 +113,14 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) =
 	defer ctx.TearDown()
 
 	var wg sync.WaitGroup
+	var mu sync.Mutex
 	servers := []string{"server_a.js", "server_b.js", "server_c.js"}
-	results := make([]string, len(servers)*2) // 2 requests per server
+	seenResponses := make(map[string]bool)
 
 	for i, server := range servers {
 		for j := 0; j < 2; j++ {
 			wg.Add(1)
-			go func(serverName string, index int) {
+			go func(serverName string, requestIndex int) {
 				defer wg.Done()
 
 				resp, err := http.Get(ctx.BaseURL + "/" + serverName)
@@ -138,18 +137,28 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) =
 
 				body := make([]byte, 1024)
 				n, _ := resp.Body.Read(body)
-				results[index] = string(body[:n])
+				result := string(body[:n])
+				if result == "" {
+					t.Errorf("Request to %s got empty result", serverName)
+					return
+				}
+
+				mu.Lock()
+				if seenResponses[result] {
+					t.Errorf("Got duplicate response: %s", result)
+				} else {
+					seenResponses[result] = true
+					t.Logf("Request %d to %s result: %s", requestIndex, serverName, result)
+				}
+				mu.Unlock()
 			}(server, i*2+j)
 		}
 	}
 
 	wg.Wait()
 
-	for i, result := range results {
-		if result == "" {
-			t.Errorf("Request %d got empty result", i)
-		}
-		t.Logf("Concurrent request %d result: %s", i, result)
+	if len(seenResponses) != len(servers)*2 {
+		t.Errorf("Expected %d unique responses, got %d", len(servers)*2, len(seenResponses))
 	}
 }
 
@@ -168,11 +177,9 @@ func TestHighConcurrencyToSingleProcess(t *testing.T) {
 let totalRequests = 0;
 
 Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) => {
-	const requestId = ++totalRequests;
-	
 	await new Promise(resolve => setTimeout(resolve, 5));
-	
-	return new Response("Request " + requestId);
+
+	return new Response((++totalRequests).toString());
 });`
 
 	files := []TestFile{
@@ -184,8 +191,9 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) =
 
 	const numRequests = 8
 	var wg sync.WaitGroup
-	successCount := 0
 	var mu sync.Mutex
+	seenNumbers := make(map[string]bool)
+	successCount := 0
 
 	for i := 0; i < numRequests; i++ {
 		wg.Add(1)
@@ -194,23 +202,46 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) =
 
 			resp, err := http.Get(ctx.BaseURL + "/high_concurrency.js")
 			if err != nil {
-				return // Don't fail test on individual request errors
+				t.Logf("Request %d failed: %v", index, err)
+				return
 			}
 			defer resp.Body.Close()
 
-			if resp.StatusCode == 200 {
-				mu.Lock()
-				successCount++
-				mu.Unlock()
+			if resp.StatusCode != 200 {
+				t.Logf("Request %d got status %d", index, resp.StatusCode)
+				return
 			}
+
+			body := make([]byte, 1024)
+			n, _ := resp.Body.Read(body)
+			result := string(body[:n])
+			if result == "" {
+				t.Logf("Request %d got empty result", index)
+				return
+			}
+
+			mu.Lock()
+			if seenNumbers[result] {
+				t.Errorf("Request %d got duplicate number: %s", index, result)
+			} else {
+				seenNumbers[result] = true
+				successCount++
+				t.Logf("Request %d result: %s", index, result)
+			}
+			mu.Unlock()
 		}(i)
 	}
 
 	wg.Wait()
 
 	if successCount < numRequests/2 {
-		t.Errorf("Only %d/%d high concurrency requests succeeded", successCount, numRequests)
+		t.Errorf("Only %d/%d high concurrency requests succeeded with unique numbers", successCount, numRequests)
 	} else {
-		t.Logf("High concurrency test: %d/%d requests succeeded", successCount, numRequests)
+		t.Logf("High concurrency test: %d/%d requests succeeded with unique numbers", successCount, numRequests)
+	}
+
+	if len(seenNumbers) != successCount {
+		t.Errorf("Expected %d unique numbers, got %d", successCount, len(seenNumbers))
 	}
 }
+

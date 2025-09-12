@@ -35,13 +35,13 @@ func (ctx *E2ETestContext) AssertGetStatus(path string, expectedStatus int) {
 }
 
 func (ctx *E2ETestContext) TearDown() {
-	if ctx.TempDir != "" {
-		os.RemoveAll(ctx.TempDir)
-	}
-
-	// Clean up process manager pool to ensure test isolation
+	// Clean up process manager pool first to ensure test isolation
 	if err := substrate.CleanupProcessPool(); err != nil {
 		ctx.T.Logf("Warning: failed to cleanup process pool: %v", err)
+	}
+
+	if ctx.TempDir != "" {
+		os.RemoveAll(ctx.TempDir)
 	}
 }
 
@@ -82,6 +82,10 @@ func RunE2ETest(t *testing.T, serverBlockContent string, files []TestFile) *E2ET
 	fullCaddyfile := fmt.Sprintf(`{
 	admin localhost:2999
 	http_port %d
+	log {
+		level ERROR
+		output discard
+	}
 }
 
 :%d {
