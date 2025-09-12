@@ -136,16 +136,50 @@ reverse_proxy @scripts {
 - **Hot Reloading**: File changes restart the associated process
 - **Concurrent Safe**: Multiple requests handled properly
 - **Resource Cleanup**: Idle processes automatically terminated
+- **Security**: Executable validation and privilege dropping when running as root
+- **Advanced Routing**: URL rewriting, subpath matching, and pattern-based routing
 
 ## Development
 
 ```bash
 ./task build    # Build the module
-./task test     # Run unit tests
-./task e2e      # Run end-to-end tests (requires Deno)
+./task test     # Run all tests (unit + integration + e2e)
 ./task run      # Run example configuration
+```
+
+## Advanced Usage
+
+### URL Rewriting
+Route clean URLs to executable scripts:
+```
+@simple_rewrite {
+    not path *.js
+    file {path}.js
+}
+
+reverse_proxy @simple_rewrite {
+    transport substrate
+}
+```
+
+### Subpath Routing
+Extract subpaths and forward as headers:
+```
+@subpath_match {
+    path_regexp m ^(.*)(/[^/]+)$
+}
+
+handle @subpath_match {
+    @file_exists file {re.m.1}.lemon.js
+    handle @file_exists {
+        reverse_proxy {
+            header_up X-Subpath {re.m.2}
+            transport substrate
+        }
+    }
+}
 ```
 
 ## Examples
 
-See the test files in `testdata/` for working examples in Deno, or check the integration tests for comprehensive usage patterns.
+Check the e2e tests in `e2e/` directory for comprehensive usage patterns and working examples.
