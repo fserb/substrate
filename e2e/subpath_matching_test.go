@@ -34,7 +34,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	ctx.AssertGet("/app/users", "path:/app/users subpath:/users")
 	ctx.AssertGet("/api/v1", "path:/api/v1 subpath:/v1")

@@ -45,7 +45,7 @@ h1 {
 	clientJS := `// Client-side JavaScript
 document.addEventListener('DOMContentLoaded', function() {
 	console.log('Static JavaScript loaded');
-	
+
 	// This is client-side JS, not a server
 	const message = 'Hello from static JS file';
 	console.log(message);
@@ -59,7 +59,6 @@ document.addEventListener('DOMContentLoaded', function() {
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	ctx.AssertGet("/index.html", indexHTML)
 
@@ -75,7 +74,7 @@ func TestDifferentFileExtensions(t *testing.T) {
 		path *.py
 		file {path}
 	}
-	
+
 	@shell_scripts {
 		path *.sh
 		file {path}
@@ -85,7 +84,7 @@ func TestDifferentFileExtensions(t *testing.T) {
 		transport substrate
 		to localhost
 	}
-	
+
 	reverse_proxy @shell_scripts {
 		transport substrate
 		to localhost
@@ -126,7 +125,6 @@ It contains information about the project.`
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	ctx.AssertGet("/server.py", "Python-like server response from: "+ctx.BaseURL+"/server.py")
 
@@ -170,7 +168,6 @@ console.log("This is not a server");`
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	ctx.AssertGet("/index.html", rootHTML)
 

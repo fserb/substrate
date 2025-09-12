@@ -40,7 +40,6 @@ It should be served directly by Caddy without going through substrate.`
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	ctx.AssertGet("/app.js", "Dynamic JS response")
 
@@ -76,7 +75,6 @@ console.log("Hello World");`
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	ctx.AssertGet("/main.app.js", "App server response")
 

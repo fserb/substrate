@@ -31,7 +31,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	ctx.AssertGet("/executable.js", "Executable server response")
 
@@ -59,7 +58,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	ctx.AssertGetStatus("/readonly.js", 502)
 }

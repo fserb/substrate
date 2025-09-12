@@ -7,8 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddytest"
-	"github.com/fserb/substrate"
+	_ "github.com/fserb/substrate"
 )
 
 type TestFile struct {
@@ -32,17 +33,6 @@ func (ctx *E2ETestContext) AssertGet(path, expectedBody string) {
 
 func (ctx *E2ETestContext) AssertGetStatus(path string, expectedStatus int) {
 	ctx.Tester.AssertGetResponse(ctx.BaseURL+path, expectedStatus, "")
-}
-
-func (ctx *E2ETestContext) TearDown() {
-	// Clean up process manager pool first to ensure test isolation
-	if err := substrate.CleanupProcessPool(); err != nil {
-		ctx.T.Logf("Warning: failed to cleanup process pool: %v", err)
-	}
-
-	if ctx.TempDir != "" {
-		os.RemoveAll(ctx.TempDir)
-	}
 }
 
 func RunE2ETest(t *testing.T, serverBlockContent string, files []TestFile) *E2ETestContext {
@@ -79,21 +69,27 @@ func RunE2ETest(t *testing.T, serverBlockContent string, files []TestFile) *E2ET
 		t.Fatalf("Failed to get free HTTP port: %v", err)
 	}
 
+	adminPort, err := getFreePort()
+	if err != nil {
+		t.Fatalf("Failed to get free admin port: %v", err)
+	}
+
 	fullCaddyfile := fmt.Sprintf(`{
-	admin localhost:2999
+	admin localhost:%d
 	http_port %d
 	log {
 		level ERROR
-		output discard
 	}
 }
 
 :%d {
 	root %s
 	%s
-}`, httpPort, httpPort, tempDir, serverBlockContent)
+}`, adminPort, httpPort, httpPort, tempDir, serverBlockContent)
 
-	tester := caddytest.NewTester(t)
+	tester := caddytest.NewTester(t).WithDefaultOverrides(caddytest.Config{
+		AdminPort: adminPort,
+	})
 	tester.InitServer(fullCaddyfile, "caddyfile")
 
 	ctx := &E2ETestContext{
@@ -103,6 +99,13 @@ func RunE2ETest(t *testing.T, serverBlockContent string, files []TestFile) *E2ET
 		BaseURL:  fmt.Sprintf("http://localhost:%d", httpPort),
 		HTTPPort: httpPort,
 	}
+
+	t.Cleanup(func() {
+		caddy.Stop()
+		if tempDir != "" {
+			os.RemoveAll(tempDir)
+		}
+	})
 
 	return ctx
 }

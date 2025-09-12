@@ -11,17 +11,8 @@ import (
 	"go.uber.org/zap"
 )
 
-var processPool = caddy.NewUsagePool()
-
 func init() {
 	caddy.RegisterModule(SubstrateTransport{})
-}
-
-// CleanupProcessPool removes the process manager from the pool.
-// This is primarily used for test cleanup to ensure test isolation.
-func CleanupProcessPool() error {
-	_, err := processPool.Delete("process_manager")
-	return err
 }
 
 type SubstrateTransport struct {
@@ -40,7 +31,7 @@ func (SubstrateTransport) CaddyModule() caddy.ModuleInfo {
 		New: func() caddy.Module {
 			return &SubstrateTransport{
 				IdleTimeout:    caddy.Duration(1 * time.Hour),
-				StartupTimeout: caddy.Duration(30 * time.Second),
+				StartupTimeout: caddy.Duration(3 * time.Second),
 			}
 		},
 	}
@@ -50,25 +41,26 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 	t.ctx = ctx
 	t.logger = ctx.Logger()
 
+	t.logger.Debug("provisioning substrate transport",
+		zap.Duration("idle_timeout", time.Duration(t.IdleTimeout)),
+		zap.Duration("startup_timeout", time.Duration(t.StartupTimeout)),
+	)
+
 	httpTransport := new(reverseproxy.HTTPTransport)
 	if err := httpTransport.Provision(ctx); err != nil {
+		t.logger.Error("failed to provision HTTP transport", zap.Error(err))
 		return fmt.Errorf("failed to provision HTTP transport: %w", err)
 	}
 	t.transport = httpTransport.Transport
+	t.logger.Debug("HTTP transport provisioned successfully")
 
-	manager, loaded, err := processPool.LoadOrNew("process_manager", func() (caddy.Destructor, error) {
-		return NewProcessManager(t.IdleTimeout, t.StartupTimeout, t.logger)
-	})
+	manager, err := NewProcessManager(t.IdleTimeout, t.StartupTimeout, t.logger)
 	if err != nil {
-		return fmt.Errorf("failed to get process manager: %w", err)
+		t.logger.Error("failed to create process manager", zap.Error(err))
+		return fmt.Errorf("failed to create process manager: %w", err)
 	}
-	t.manager = manager.(*ProcessManager)
-
-	if loaded {
-		t.logger.Info("reusing existing process manager from pool")
-	} else {
-		t.logger.Info("created new process manager")
-	}
+	t.manager = manager
+	t.logger.Debug("process manager created successfully")
 
 	t.logger.Info("substrate transport provisioned",
 		zap.Duration("idle_timeout", time.Duration(t.IdleTimeout)),
@@ -91,18 +83,19 @@ func (t *SubstrateTransport) Validate() error {
 		return fmt.Errorf("startup_timeout cannot be zero")
 	}
 
-	if t.StartupTimeout > caddy.Duration(5*time.Minute) {
-		return fmt.Errorf("startup_timeout is very long (%v), this seems unusual", time.Duration(t.StartupTimeout))
-	}
-
 	return nil
 }
 
 func (t *SubstrateTransport) Cleanup() error {
+	t.logger.Info("cleaning up substrate transport")
 	if t.manager != nil {
-		_, err := processPool.Delete("process_manager")
-		return err
+		if err := t.manager.Stop(); err != nil {
+			t.logger.Error("error during process manager cleanup", zap.Error(err))
+			return err
+		}
+		t.logger.Debug("process manager stopped successfully")
 	}
+	t.logger.Info("substrate transport cleanup complete")
 	return nil
 }
 
@@ -137,27 +130,77 @@ func (t *SubstrateTransport) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 }
 
 func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.logger.Debug("handling request",
+		zap.String("method", req.Method),
+		zap.String("url", req.URL.String()),
+		zap.String("remote_addr", req.RemoteAddr),
+	)
+
 	repl := req.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 
 	filePath, _ := repl.GetString("http.matchers.file.absolute")
 	if filePath == "" {
 		filePath = req.URL.Path
+		t.logger.Debug("no file matcher found, using URL path",
+			zap.String("path", filePath),
+		)
+	} else {
+		t.logger.Debug("resolved file path from matcher",
+			zap.String("file_path", filePath),
+		)
 	}
+
+	t.logger.Info("routing request to subprocess",
+		zap.String("method", req.Method),
+		zap.String("url", req.URL.Path),
+		zap.String("file_path", filePath),
+		zap.String("remote_addr", req.RemoteAddr),
+	)
 
 	hostPort, err := t.manager.getOrCreateHost(filePath)
 	if err != nil {
+		t.logger.Error("failed to get or create host for file",
+			zap.String("file_path", filePath),
+			zap.Error(err),
+		)
 		return nil, fmt.Errorf("failed to get host for file %s: %w", filePath, err)
 	}
 
+	t.logger.Debug("proxying request to process",
+		zap.String("file_path", filePath),
+		zap.String("target_host_port", hostPort),
+		zap.String("original_host", req.URL.Host),
+	)
+
 	originalHost := req.URL.Host
+	originalScheme := req.URL.Scheme
 	req.URL.Host = hostPort
 	req.URL.Scheme = "http"
 
+	start := time.Now()
 	resp, err := t.transport.RoundTrip(req)
+	duration := time.Since(start)
+
+	// Restore original URL in case of error
 	if err != nil {
 		req.URL.Host = originalHost
+		req.URL.Scheme = originalScheme
+		t.logger.Error("process request failed",
+			zap.String("file_path", filePath),
+			zap.String("target_host_port", hostPort),
+			zap.Duration("duration", duration),
+			zap.Error(err),
+		)
 		return nil, fmt.Errorf("request to process failed: %w", err)
 	}
+
+	t.logger.Info("request completed successfully",
+		zap.String("file_path", filePath),
+		zap.String("target_host_port", hostPort),
+		zap.Duration("duration", duration),
+		zap.Int("status_code", resp.StatusCode),
+		zap.Int64("content_length", resp.ContentLength),
+	)
 
 	return resp, nil
 }

@@ -21,7 +21,6 @@ func TestMissingFileReturnsError(t *testing.T) {
 	files := []TestFile{}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	ctx.AssertGetStatus("/nonexistent.js", 404)
 }
@@ -55,7 +54,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	start := time.Now()
 	ctx.AssertGet("/slow.js", "Slow server finally responded!")
@@ -97,7 +95,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	ctx.AssertGetStatus("/very_slow.js", 502)
 }
@@ -125,7 +122,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	ctx.AssertGetStatus("/failing.js", 502)
 }
@@ -153,8 +149,6 @@ Deno.serve({hostname: "127.0.0.1", port: 9999}, (req) => {
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	ctx.AssertGetStatus("/wrong_port.js", 502)
 }
-

@@ -40,6 +40,11 @@ type Process struct {
 }
 
 func NewProcessManager(idleTimeout, startupTimeout caddy.Duration, logger *zap.Logger) (*ProcessManager, error) {
+	logger.Info("creating new process manager",
+		zap.Duration("idle_timeout", time.Duration(idleTimeout)),
+		zap.Duration("startup_timeout", time.Duration(startupTimeout)),
+	)
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	pm := &ProcessManager{
@@ -53,6 +58,8 @@ func NewProcessManager(idleTimeout, startupTimeout caddy.Duration, logger *zap.L
 
 	pm.wg.Add(1)
 	go pm.cleanupLoop()
+
+	logger.Debug("process manager cleanup loop started")
 
 	return pm, nil
 }
@@ -84,7 +91,13 @@ func validateFilePath(filePath string) error {
 }
 
 func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
+	pm.logger.Debug("getOrCreateHost called", zap.String("file", file))
+
 	if err := validateFilePath(file); err != nil {
+		pm.logger.Error("file path validation failed",
+			zap.String("file", file),
+			zap.Error(err),
+		)
 		return "", err
 	}
 
@@ -94,18 +107,47 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 	if process, exists := pm.processes[file]; exists {
 		process.mu.Lock()
 		process.LastUsed = time.Now()
+		hostPort := fmt.Sprintf("%s:%d", process.Host, process.Port)
+		pid := process.Cmd.Process.Pid
 		process.mu.Unlock()
-		return fmt.Sprintf("%s:%d", process.Host, process.Port), nil
+
+		pm.logger.Debug("reusing existing process",
+			zap.String("file", file),
+			zap.String("host_port", hostPort),
+			zap.Int("pid", pid),
+		)
+		return hostPort, nil
 	}
+
+	pm.logger.Info("creating new process",
+		zap.String("file", file),
+	)
 
 	host := "localhost"
 	maxRetries := 3
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
+		pm.logger.Debug("attempting to create process",
+			zap.String("file", file),
+			zap.Int("attempt", attempt),
+			zap.Int("max_retries", maxRetries),
+		)
+
 		port, err := getFreePort()
 		if err != nil {
+			pm.logger.Error("failed to get free port",
+				zap.String("file", file),
+				zap.Int("attempt", attempt),
+				zap.Error(err),
+			)
 			return "", fmt.Errorf("failed to get free port: %w", err)
 		}
+
+		pm.logger.Debug("allocated free port",
+			zap.String("file", file),
+			zap.Int("port", port),
+			zap.Int("attempt", attempt),
+		)
 
 		process := &Process{
 			Command:  file,
@@ -116,7 +158,19 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 			logger:   pm.logger,
 		}
 
+		pm.logger.Debug("starting process",
+			zap.String("file", file),
+			zap.String("host_port", fmt.Sprintf("%s:%d", host, port)),
+		)
+
 		if err := process.start(); err != nil {
+			pm.logger.Error("failed to start process",
+				zap.String("file", file),
+				zap.Int("attempt", attempt),
+				zap.Int("port", port),
+				zap.Error(err),
+			)
+
 			if pm.isPortInUse(host, port) {
 				pm.logger.Warn("port race condition detected during process start, retrying",
 					zap.Int("attempt", attempt),
@@ -174,12 +228,25 @@ func (pm *ProcessManager) Stop() error {
 	var errors []error
 	for command, process := range pm.processes {
 		if err := process.Stop(); err != nil {
+			pm.logger.Warn("process stop returned error (may be expected during shutdown)",
+				zap.String("command", command),
+				zap.Error(err),
+			)
 			errors = append(errors, fmt.Errorf("failed to stop process %s: %w", command, err))
 		}
 	}
 
+	// Clear the processes map regardless of errors since we've attempted to stop all processes
+	pm.processes = make(map[string]*Process)
+
+	// Don't return an error for process termination issues during shutdown
+	// as they are expected and shouldn't prevent Caddy from shutting down cleanly
 	if len(errors) > 0 {
-		return fmt.Errorf("errors stopping processes: %v", errors)
+		pm.logger.Info("process manager stopped with some process cleanup warnings",
+			zap.Int("process_count", len(errors)),
+		)
+	} else {
+		pm.logger.Info("process manager stopped cleanly")
 	}
 
 	return nil
@@ -188,14 +255,21 @@ func (pm *ProcessManager) Stop() error {
 func (pm *ProcessManager) cleanupLoop() {
 	defer pm.wg.Done()
 
-	ticker := time.NewTicker(time.Hour)
+	cleanupInterval := time.Hour
+	pm.logger.Debug("cleanup loop started",
+		zap.Duration("cleanup_interval", cleanupInterval),
+	)
+
+	ticker := time.NewTicker(cleanupInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-pm.ctx.Done():
+			pm.logger.Debug("cleanup loop stopped")
 			return
 		case <-ticker.C:
+			pm.logger.Debug("running periodic cleanup")
 			pm.cleanupIdleProcesses()
 		}
 	}
@@ -250,13 +324,38 @@ func (p *Process) start() error {
 	args := []string{p.Host, fmt.Sprintf("%d", p.Port)}
 	p.Cmd = exec.Command(p.Command, args...)
 
+	p.logger.Debug("configuring process command",
+		zap.String("command", p.Command),
+		zap.Strings("args", args),
+		zap.String("host_port", fmt.Sprintf("%s:%d", p.Host, p.Port)),
+	)
+
 	if err := configureProcessSecurity(p.Cmd, p.Command); err != nil {
+		p.logger.Error("failed to configure process security",
+			zap.String("command", p.Command),
+			zap.Error(err),
+		)
 		return fmt.Errorf("failed to configure process security: %w", err)
 	}
 
+	p.logger.Debug("starting process command",
+		zap.String("command", p.Command),
+		zap.String("host_port", fmt.Sprintf("%s:%d", p.Host, p.Port)),
+	)
+
 	if err := p.Cmd.Start(); err != nil {
+		p.logger.Error("failed to start command",
+			zap.String("command", p.Command),
+			zap.Error(err),
+		)
 		return fmt.Errorf("failed to start command: %w", err)
 	}
+
+	p.logger.Info("process started successfully",
+		zap.String("command", p.Command),
+		zap.Int("pid", p.Cmd.Process.Pid),
+		zap.String("host_port", fmt.Sprintf("%s:%d", p.Host, p.Port)),
+	)
 
 	go p.monitor()
 
@@ -383,37 +482,77 @@ func (pm *ProcessManager) isPortInUse(host string, port int) bool {
 func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.Duration, process *Process) error {
 	deadline := time.Now().Add(timeout)
 	hostPort := fmt.Sprintf("%s:%d", host, port)
+	start := time.Now()
+
+	pm.logger.Info("waiting for port to become ready",
+		zap.String("host_port", hostPort),
+		zap.Duration("timeout", timeout),
+		zap.String("command", process.Command),
+	)
 
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
+	attemptCount := 0
 	for {
-		// Check if deadline has already passed to avoid negative duration panic
+		// Simple timeout check at the start of each iteration
 		if time.Now().After(deadline) {
+			pm.logger.Error("timeout waiting for port to become ready",
+				zap.String("host_port", hostPort),
+				zap.Duration("timeout", timeout),
+				zap.Duration("elapsed", time.Since(start)),
+				zap.Int("attempts", attemptCount),
+				zap.String("command", process.Command),
+			)
 			return fmt.Errorf("timeout waiting for port %s to become ready after %v", hostPort, timeout)
 		}
 
 		select {
 		case <-time.After(time.Until(deadline)):
+			pm.logger.Error("timeout waiting for port to become ready (select case)",
+				zap.String("host_port", hostPort),
+				zap.Duration("timeout", timeout),
+				zap.Duration("elapsed", time.Since(start)),
+				zap.Int("attempts", attemptCount),
+				zap.String("command", process.Command),
+			)
 			return fmt.Errorf("timeout waiting for port %s to become ready after %v", hostPort, timeout)
 		case <-ticker.C:
+			attemptCount++
+
 			// Check if process is still alive before trying to connect
 			if process.Cmd.ProcessState != nil && process.Cmd.ProcessState.Exited() {
+				pm.logger.Error("process exited before port became ready",
+					zap.String("host_port", hostPort),
+					zap.Int("exit_code", process.Cmd.ProcessState.ExitCode()),
+					zap.String("command", process.Command),
+					zap.Int("attempts", attemptCount),
+				)
 				return fmt.Errorf("process exited before port became ready (exit code: %d)", process.Cmd.ProcessState.ExitCode())
 			}
 
 			conn, err := net.DialTimeout("tcp", hostPort, 500*time.Millisecond)
 			if err == nil {
 				conn.Close()
+				waitTime := time.Since(start)
 				pm.logger.Info("port became ready",
-					zap.String("host:port", hostPort),
-					zap.Duration("wait_time", time.Since(deadline.Add(-timeout))),
+					zap.String("host_port", hostPort),
+					zap.Duration("wait_time", waitTime),
+					zap.Int("attempts", attemptCount),
+					zap.String("command", process.Command),
 				)
 				return nil
 			}
 
-			if time.Now().After(deadline) {
-				return fmt.Errorf("timeout waiting for port %s to become ready after %v", hostPort, timeout)
+			// Log connection failures more frequently for debugging
+			if attemptCount%50 == 0 {
+				pm.logger.Info("still waiting for port to become ready",
+					zap.String("host_port", hostPort),
+					zap.Duration("elapsed", time.Since(start)),
+					zap.Duration("remaining", time.Until(deadline)),
+					zap.Int("attempts", attemptCount),
+					zap.String("last_error", err.Error()),
+				)
 			}
 		}
 	}

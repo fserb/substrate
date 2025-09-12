@@ -32,7 +32,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) =
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	const numRequests = 3
 	var wg sync.WaitGroup
@@ -110,7 +109,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) =
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -187,7 +185,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) =
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	const numRequests = 8
 	var wg sync.WaitGroup
@@ -244,4 +241,3 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) =
 		t.Errorf("Expected %d unique numbers, got %d", successCount, len(seenNumbers))
 	}
 }
-

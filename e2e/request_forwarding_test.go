@@ -25,7 +25,7 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	for (const [key, value] of req.headers.entries()) {
 		headers[key] = value;
 	}
-	
+
 	return new Response(JSON.stringify({
 		method: req.method,
 		url: req.url,
@@ -40,7 +40,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	// Create request with custom headers
 	req, err := http.NewRequest("GET", ctx.BaseURL+"/headers.js", nil)
@@ -96,7 +95,7 @@ func TestRequestBodyIsForwarded(t *testing.T) {
 	bodyEchoServer := `#!/usr/bin/env -S deno run --allow-net
 Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) => {
 	const body = await req.text();
-	
+
 	return new Response(JSON.stringify({
 		method: req.method,
 		url: req.url,
@@ -113,7 +112,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) =
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	// Test POST request with JSON body
 	jsonData := `{"message": "Hello from substrate test", "number": 42}`
@@ -168,11 +166,11 @@ func TestQueryParametersAreForwarded(t *testing.T) {
 Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	const url = new URL(req.url);
 	const params = {};
-	
+
 	for (const [key, value] of url.searchParams.entries()) {
 		params[key] = value;
 	}
-	
+
 	return new Response(JSON.stringify({
 		url: req.url,
 		pathname: url.pathname,
@@ -188,7 +186,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	// Make request with query parameters
 	url := ctx.BaseURL + "/query.js?name=substrate&version=3&test=true"

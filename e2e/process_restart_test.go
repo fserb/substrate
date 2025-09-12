@@ -21,12 +21,12 @@ let requestCount = 0;
 Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	requestCount++;
 	const response = new Response("Request #" + requestCount + " - goodbye!");
-	
+
 	setTimeout(() => {
 		console.log("Server exiting after request", requestCount);
 		Deno.exit(0);
 	}, 10);
-	
+
 	return response;
 });`
 
@@ -35,7 +35,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	ctx.AssertGet("/exit_server.js", "Request #1 - goodbye!")
 
@@ -63,12 +62,12 @@ let requestCount = 0;
 Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	requestCount++;
 	const response = new Response("Request #" + requestCount + " before crash");
-	
+
 	setTimeout(() => {
 		console.log("Server crashing after request", requestCount);
 		Deno.exit(1);
 	}, 10);
-	
+
 	return response;
 });`
 
@@ -77,7 +76,6 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
-	defer ctx.TearDown()
 
 	ctx.AssertGet("/crash_server.js", "Request #1 before crash")
 
