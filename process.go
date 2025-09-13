@@ -323,10 +323,12 @@ func (p *Process) start() error {
 
 	args := []string{p.Host, fmt.Sprintf("%d", p.Port)}
 	p.Cmd = exec.Command(p.Command, args...)
+	p.Cmd.Dir = filepath.Dir(p.Command)
 
 	p.logger.Debug("configuring process command",
 		zap.String("command", p.Command),
 		zap.Strings("args", args),
+		zap.String("working_dir", p.Cmd.Dir),
 		zap.String("host_port", fmt.Sprintf("%s:%d", p.Host, p.Port)),
 	)
 
@@ -561,3 +563,4 @@ func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.D
 func (pm *ProcessManager) Destruct() error {
 	return pm.Stop()
 }
+
