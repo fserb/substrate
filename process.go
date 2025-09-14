@@ -255,9 +255,14 @@ func (pm *ProcessManager) Stop() error {
 func (pm *ProcessManager) cleanupLoop() {
 	defer pm.wg.Done()
 
+	idleTimeout := time.Duration(pm.idleTimeout)
 	cleanupInterval := time.Hour
+	if idleTimeout < cleanupInterval {
+		cleanupInterval = idleTimeout
+	}
 	pm.logger.Debug("cleanup loop started",
 		zap.Duration("cleanup_interval", cleanupInterval),
+		zap.Duration("idle_timeout", idleTimeout),
 	)
 
 	ticker := time.NewTicker(cleanupInterval)
