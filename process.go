@@ -1,8 +1,10 @@
 package substrate
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/caddyserver/caddy/v2"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type ProcessManager struct {
@@ -345,6 +348,23 @@ func (p *Process) start() error {
 		return fmt.Errorf("failed to configure process security: %w", err)
 	}
 
+	// Set up output capture before starting the process
+	stdout, err := p.Cmd.StdoutPipe()
+	if err != nil {
+		p.logger.Warn("failed to create stdout pipe, output will not be logged",
+			zap.String("command", p.Command),
+			zap.Error(err),
+		)
+	}
+
+	stderr, err := p.Cmd.StderrPipe()
+	if err != nil {
+		p.logger.Warn("failed to create stderr pipe, error output will not be logged",
+			zap.String("command", p.Command),
+			zap.Error(err),
+		)
+	}
+
 	p.logger.Debug("starting process command",
 		zap.String("command", p.Command),
 		zap.String("host_port", fmt.Sprintf("%s:%d", p.Host, p.Port)),
@@ -358,6 +378,14 @@ func (p *Process) start() error {
 		return fmt.Errorf("failed to start command: %w", err)
 	}
 
+	// Start output logging goroutines after successful process start
+	if stdout != nil {
+		go p.logOutput(stdout, "stdout", zap.InfoLevel)
+	}
+	if stderr != nil {
+		go p.logOutput(stderr, "stderr", zap.ErrorLevel)
+	}
+
 	p.logger.Info("process started successfully",
 		zap.String("command", p.Command),
 		zap.Int("pid", p.Cmd.Process.Pid),
@@ -367,6 +395,32 @@ func (p *Process) start() error {
 	go p.monitor()
 
 	return nil
+}
+
+func (p *Process) logOutput(pipe io.ReadCloser, streamType string, logLevel zapcore.Level) {
+	defer pipe.Close()
+
+	scanner := bufio.NewScanner(pipe)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			p.logger.Log(logLevel, "process output",
+				zap.String("command", p.Command),
+				zap.Int("pid", p.Cmd.Process.Pid),
+				zap.String("stream", streamType),
+				zap.String("output", line),
+			)
+		}
+	}
+
+	if err := scanner.Err(); err != nil && err != io.EOF {
+		p.logger.Error("error reading process output",
+			zap.String("command", p.Command),
+			zap.Int("pid", p.Cmd.Process.Pid),
+			zap.String("stream", streamType),
+			zap.Error(err),
+		)
+	}
 }
 
 func (p *Process) monitor() {
