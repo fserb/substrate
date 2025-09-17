@@ -109,11 +109,19 @@ func (t *SubstrateTransport) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				if !d.NextArg() {
 					return d.ArgErr()
 				}
-				dur, err := time.ParseDuration(d.Val())
-				if err != nil {
-					return d.Errf("parsing idle_timeout: %v", err)
+				val := d.Val()
+				// Handle special cases for unitless values
+				if val == "0" {
+					t.IdleTimeout = caddy.Duration(0)
+				} else if val == "-1" {
+					t.IdleTimeout = caddy.Duration(-1)
+				} else {
+					dur, err := time.ParseDuration(val)
+					if err != nil {
+						return d.Errf("parsing idle_timeout: %v", err)
+					}
+					t.IdleTimeout = caddy.Duration(dur)
 				}
-				t.IdleTimeout = caddy.Duration(dur)
 			case "startup_timeout":
 				if !d.NextArg() {
 					return d.ArgErr()
