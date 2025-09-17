@@ -194,7 +194,7 @@ func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error
 			Body:          io.NopCloser(strings.NewReader(responseBody)),
 			ContentLength: int64(len(responseBody)),
 			Header: http.Header{
-				"Content-Type": []string{"text/plain"},
+				"Content-Type": []string{"text/plain; charset=utf-8"},
 			},
 			Request: req,
 		}, nil

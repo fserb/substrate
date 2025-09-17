@@ -65,10 +65,10 @@ this is not valid javascript syntax!!!
 		}
 	}
 
-	// Should be text/plain
+	// Should be text/plain; charset=utf-8
 	contentType := resp.Header.Get("Content-Type")
-	if contentType != "text/plain" {
-		t.Errorf("Expected Content-Type: text/plain, got %q", contentType)
+	if contentType != "text/plain; charset=utf-8" {
+		t.Errorf("Expected Content-Type: text/plain; charset=utf-8, got %q", contentType)
 	}
 }
 
