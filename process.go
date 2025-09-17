@@ -76,10 +76,14 @@ func NewProcessManager(idleTimeout, startupTimeout caddy.Duration, logger *zap.L
 		cancel:         cancel,
 	}
 
-	pm.wg.Add(1)
-	go pm.cleanupLoop()
-
-	logger.Debug("process manager cleanup loop started")
+	if idleTimeout > 0 {
+		pm.wg.Add(1)
+		go pm.cleanupLoop()
+		logger.Debug("process manager cleanup loop started")
+	} else {
+		logger.Debug("process manager cleanup loop disabled",
+			zap.Duration("idle_timeout", time.Duration(idleTimeout)))
+	}
 
 	return pm, nil
 }
@@ -284,6 +288,27 @@ func (pm *ProcessManager) removeProcess(command string) {
 			zap.String("command", command),
 		)
 		delete(pm.processes, command)
+	}
+}
+
+func (pm *ProcessManager) closeProcessAfterRequest(file string) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if process, exists := pm.processes[file]; exists {
+		pm.logger.Info("closing process after request (idle_timeout = -1)",
+			zap.String("file", file),
+			zap.Int("pid", process.Cmd.Process.Pid),
+		)
+
+		if err := process.Stop(); err != nil {
+			pm.logger.Error("failed to stop process after request",
+				zap.String("file", file),
+				zap.Error(err),
+			)
+		}
+
+		delete(pm.processes, file)
 	}
 }
 

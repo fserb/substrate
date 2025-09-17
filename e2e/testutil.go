@@ -40,7 +40,6 @@ func (ctx *E2ETestContext) AssertGetStatus(path string, expectedStatus int) {
 	ctx.Tester.AssertResponseCode(req, expectedStatus)
 }
 
-
 func RunE2ETest(t *testing.T, serverBlockContent string, files []TestFile) *E2ETestContext {
 	if testing.Short() {
 		t.Skip("Skipping e2e test in short mode")
@@ -84,6 +83,7 @@ func RunE2ETest(t *testing.T, serverBlockContent string, files []TestFile) *E2ET
 	admin localhost:%d
 	http_port %d
 	log {
+		format console
 		level ERROR
 	}
 }
@@ -130,3 +130,4 @@ func getFreePort() (int, error) {
 
 	return addr.Port, nil
 }
+

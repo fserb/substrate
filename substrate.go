@@ -73,8 +73,8 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 }
 
 func (t *SubstrateTransport) Validate() error {
-	if t.IdleTimeout < 0 {
-		return fmt.Errorf("idle_timeout cannot be negative")
+	if t.IdleTimeout < -1 {
+		return fmt.Errorf("idle_timeout must be >= -1 (use -1 for close-after-request, 0 to disable cleanup, or positive duration)")
 	}
 
 	if t.StartupTimeout < 0 {
@@ -235,6 +235,11 @@ func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error
 		zap.Int("status_code", resp.StatusCode),
 		zap.Int64("content_length", resp.ContentLength),
 	)
+
+	// Close process after request if idle_timeout is -1
+	if t.IdleTimeout == -1 {
+		go t.manager.closeProcessAfterRequest(filePath)
+	}
 
 	return resp, nil
 }

@@ -109,7 +109,7 @@ func main() {
 ```
 reverse_proxy @matcher {
     transport substrate {
-        idle_timeout 5m      # How long to keep unused processes
+        idle_timeout 5m      # How long to keep unused processes (0=never cleanup, -1=close after request)
         startup_timeout 30s  # How long to wait for process startup
     }
 }
