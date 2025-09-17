@@ -2,6 +2,7 @@ package substrate
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -40,6 +41,22 @@ type Process struct {
 	onExit   func()
 	mu       sync.RWMutex
 	logger   *zap.Logger
+	// Startup output buffers (only used during startup)
+	startupStdout *bytes.Buffer
+	startupStderr *bytes.Buffer
+}
+
+// ProcessStartupError contains detailed information about process startup failures
+type ProcessStartupError struct {
+	Err      error
+	ExitCode int
+	Stdout   string
+	Stderr   string
+	Command  string
+}
+
+func (e *ProcessStartupError) Error() string {
+	return e.Err.Error()
 }
 
 func NewProcessManager(idleTimeout, startupTimeout caddy.Duration, logger *zap.Logger) (*ProcessManager, error) {
@@ -127,98 +144,73 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 	)
 
 	host := "localhost"
-	maxRetries := 3
 
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		pm.logger.Debug("attempting to create process",
+	port, err := getFreePort()
+	if err != nil {
+		pm.logger.Error("failed to get free port",
 			zap.String("file", file),
-			zap.Int("attempt", attempt),
-			zap.Int("max_retries", maxRetries),
+			zap.Error(err),
 		)
-
-		port, err := getFreePort()
-		if err != nil {
-			pm.logger.Error("failed to get free port",
-				zap.String("file", file),
-				zap.Int("attempt", attempt),
-				zap.Error(err),
-			)
-			return "", fmt.Errorf("failed to get free port: %w", err)
-		}
-
-		pm.logger.Debug("allocated free port",
-			zap.String("file", file),
-			zap.Int("port", port),
-			zap.Int("attempt", attempt),
-		)
-
-		process := &Process{
-			Command:  file,
-			Host:     host,
-			Port:     port,
-			LastUsed: time.Now(),
-			onExit:   func() { pm.removeProcess(file) },
-			logger:   pm.logger,
-		}
-
-		pm.logger.Debug("starting process",
-			zap.String("file", file),
-			zap.String("host_port", fmt.Sprintf("%s:%d", host, port)),
-		)
-
-		if err := process.start(); err != nil {
-			pm.logger.Error("failed to start process",
-				zap.String("file", file),
-				zap.Int("attempt", attempt),
-				zap.Int("port", port),
-				zap.Error(err),
-			)
-
-			if pm.isPortInUse(host, port) {
-				pm.logger.Warn("port race condition detected during process start, retrying",
-					zap.Int("attempt", attempt),
-					zap.Int("port", port),
-					zap.String("file", file),
-				)
-				if attempt < maxRetries {
-					continue
-				}
-			}
-			return "", fmt.Errorf("failed to start process after %d attempts: %w", attempt, err)
-		}
-
-		pm.processes[file] = process
-
-		pm.logger.Info("started process",
-			zap.String("file", file),
-			zap.String("host:port", fmt.Sprintf("%s:%d", host, port)),
-			zap.Int("pid", process.Cmd.Process.Pid),
-			zap.Int("attempt", attempt),
-		)
-
-		if err := pm.waitForPortReady(host, port, time.Duration(pm.startupTimeout), process); err != nil {
-			if pm.isPortInUse(host, port) {
-				pm.logger.Warn("port stolen after process start, retrying",
-					zap.Int("attempt", attempt),
-					zap.Int("port", port),
-					zap.String("file", file),
-				)
-				process.Stop()
-				delete(pm.processes, file)
-				if attempt < maxRetries {
-					continue
-				}
-				return "", fmt.Errorf("port conflicts persist after %d attempts", maxRetries)
-			}
-			// Process failed to start properly - clean up and return error
-			process.Stop()
-			delete(pm.processes, file)
-			return "", fmt.Errorf("process startup failed: %w", err)
-		}
-		return fmt.Sprintf("%s:%d", host, port), nil
+		return "", fmt.Errorf("failed to get free port: %w", err)
 	}
 
-	return "", fmt.Errorf("failed to create process after %d attempts", maxRetries)
+	pm.logger.Debug("allocated free port",
+		zap.String("file", file),
+		zap.Int("port", port),
+	)
+
+	process := &Process{
+		Command:       file,
+		Host:          host,
+		Port:          port,
+		LastUsed:      time.Now(),
+		onExit:        func() { pm.removeProcess(file) },
+		logger:        pm.logger,
+		startupStdout: &bytes.Buffer{},
+		startupStderr: &bytes.Buffer{},
+	}
+
+	pm.logger.Debug("starting process",
+		zap.String("file", file),
+		zap.String("host_port", fmt.Sprintf("%s:%d", host, port)),
+	)
+
+	if err := process.start(); err != nil {
+		pm.logger.Error("failed to start process",
+			zap.String("file", file),
+			zap.Int("port", port),
+			zap.Error(err),
+		)
+		return "", &ProcessStartupError{
+			Err:      fmt.Errorf("failed to start process: %w", err),
+			ExitCode: -1,
+			Stdout:   process.startupStdout.String(),
+			Stderr:   process.startupStderr.String(),
+			Command:  file,
+		}
+	}
+
+	pm.processes[file] = process
+
+	pm.logger.Info("started process",
+		zap.String("file", file),
+		zap.String("host:port", fmt.Sprintf("%s:%d", host, port)),
+		zap.Int("pid", process.Cmd.Process.Pid),
+	)
+
+	if err := pm.waitForPortReady(host, port, time.Duration(pm.startupTimeout), process); err != nil {
+		// Process failed to start properly - clean up and return error
+		process.Stop()
+		delete(pm.processes, file)
+		return "", &ProcessStartupError{
+			Err:      fmt.Errorf("process startup failed: %w", err),
+			ExitCode: process.getExitCode(),
+			Stdout:   process.startupStdout.String(),
+			Stderr:   process.startupStderr.String(),
+			Command:  file,
+		}
+	}
+	return fmt.Sprintf("%s:%d", host, port), nil
 }
 
 func (pm *ProcessManager) Stop() error {
@@ -378,12 +370,12 @@ func (p *Process) start() error {
 		return fmt.Errorf("failed to start command: %w", err)
 	}
 
-	// Start output logging goroutines after successful process start
+	// Start output logging and buffering goroutines after successful process start
 	if stdout != nil {
-		go p.logOutput(stdout, "stdout", zap.InfoLevel)
+		go p.logAndBufferOutput(stdout, "stdout", zap.InfoLevel, p.startupStdout)
 	}
 	if stderr != nil {
-		go p.logOutput(stderr, "stderr", zap.ErrorLevel)
+		go p.logAndBufferOutput(stderr, "stderr", zap.ErrorLevel, p.startupStderr)
 	}
 
 	p.logger.Info("process started successfully",
@@ -397,10 +389,13 @@ func (p *Process) start() error {
 	return nil
 }
 
-func (p *Process) logOutput(pipe io.ReadCloser, streamType string, logLevel zapcore.Level) {
+func (p *Process) logAndBufferOutput(pipe io.ReadCloser, streamType string, logLevel zapcore.Level, buffer *bytes.Buffer) {
 	defer pipe.Close()
 
-	scanner := bufio.NewScanner(pipe)
+	// Create a tee reader to both log and buffer the output
+	teeReader := io.TeeReader(pipe, buffer)
+	scanner := bufio.NewScanner(teeReader)
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line != "" {
@@ -421,6 +416,21 @@ func (p *Process) logOutput(pipe io.ReadCloser, streamType string, logLevel zapc
 			zap.Error(err),
 		)
 	}
+}
+
+// getExitCode returns the current exit code of the process, or -1 if not available
+func (p *Process) getExitCode() int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.exitCode
+}
+
+// clearStartupBuffers clears the startup output buffers to free memory after successful startup
+func (p *Process) clearStartupBuffers() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.startupStdout.Reset()
+	p.startupStderr.Reset()
 }
 
 func (p *Process) monitor() {
@@ -602,6 +612,8 @@ func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.D
 					zap.Int("attempts", attemptCount),
 					zap.String("command", process.Command),
 				)
+				// Clear startup buffers to free memory after successful startup
+				process.clearStartupBuffers()
 				return nil
 			}
 
@@ -622,4 +634,3 @@ func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.D
 func (pm *ProcessManager) Destruct() error {
 	return pm.Stop()
 }
-

@@ -3,6 +3,7 @@ package e2e
 import (
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -32,8 +33,13 @@ func (ctx *E2ETestContext) AssertGet(path, expectedBody string) {
 }
 
 func (ctx *E2ETestContext) AssertGetStatus(path string, expectedStatus int) {
-	ctx.Tester.AssertGetResponse(ctx.BaseURL+path, expectedStatus, "")
+	req, err := http.NewRequest("GET", ctx.BaseURL+path, nil)
+	if err != nil {
+		ctx.T.Fatalf("Failed to create request for %s: %v", path, err)
+	}
+	ctx.Tester.AssertResponseCode(req, expectedStatus)
 }
+
 
 func RunE2ETest(t *testing.T, serverBlockContent string, files []TestFile) *E2ETestContext {
 	if testing.Short() {

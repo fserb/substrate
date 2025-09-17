@@ -2,7 +2,9 @@ package substrate
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
@@ -163,7 +165,39 @@ func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error
 			zap.String("file_path", filePath),
 			zap.Error(err),
 		)
-		return nil, fmt.Errorf("failed to get host for file %s: %w", filePath, err)
+
+		// Return HTTP 502 response instead of error
+		responseBody := "Bad Gateway"
+
+		// If this is a startup error and request is from internal IP, include details
+		if startupErr, ok := err.(*ProcessStartupError); ok && isInternalIP(req.RemoteAddr) {
+			var details strings.Builder
+			details.WriteString(fmt.Sprintf("Process startup failed: %s\n\n", startupErr.Err.Error()))
+			details.WriteString(fmt.Sprintf("Command: %s\n", startupErr.Command))
+			details.WriteString(fmt.Sprintf("Exit code: %d\n\n", startupErr.ExitCode))
+			if startupErr.Stdout != "" {
+				details.WriteString("Stdout:\n")
+				details.WriteString(startupErr.Stdout)
+				details.WriteString("\n\n")
+			}
+			if startupErr.Stderr != "" {
+				details.WriteString("Stderr:\n")
+				details.WriteString(startupErr.Stderr)
+				details.WriteString("\n")
+			}
+			responseBody = details.String()
+		}
+
+		return &http.Response{
+			StatusCode:    http.StatusBadGateway,
+			Status:        "502 Bad Gateway",
+			Body:          io.NopCloser(strings.NewReader(responseBody)),
+			ContentLength: int64(len(responseBody)),
+			Header: http.Header{
+				"Content-Type": []string{"text/plain"},
+			},
+			Request: req,
+		}, nil
 	}
 
 	t.logger.Debug("proxying request to process",

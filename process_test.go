@@ -67,13 +67,13 @@ const server = Deno.serve({
   port: parseInt(port)
 }, () => new Response("OK"));
 
-console.log("Server started, will exit with code 42 after 100ms");
+console.log("Server started, will exit with code 42 after 1 second");
 
-// Exit after short delay with code 42
+// Exit after delay with code 42 - delay long enough for startup timeout to complete
 setTimeout(() => {
   server.shutdown();
   Deno.exit(42);
-}, 100);
+}, 1000);
 `
 	err = os.WriteFile(exitScript, []byte(scriptContent), 0755)
 	if err != nil {
@@ -154,13 +154,13 @@ const server = Deno.serve({
   port: parseInt(port)
 }, () => new Response("OK"));
 
-console.log("Server started, will exit normally after 100ms");
+console.log("Server started, will exit normally after 1 second");
 
-// Exit normally after short delay
+// Exit normally after delay - delay long enough for startup timeout to complete
 setTimeout(() => {
   server.shutdown();
   Deno.exit(0);
-}, 100);
+}, 1000);
 `
 	err = os.WriteFile(normalScript, []byte(scriptContent), 0755)
 	if err != nil {
