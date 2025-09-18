@@ -23,6 +23,7 @@ import (
 type ProcessManager struct {
 	idleTimeout    caddy.Duration
 	startupTimeout caddy.Duration
+	env            map[string]string
 	logger         *zap.Logger
 	processes      map[string]*Process
 	mu             sync.RWMutex
@@ -41,6 +42,7 @@ type Process struct {
 	onExit   func()
 	mu       sync.RWMutex
 	logger   *zap.Logger
+	env      map[string]string
 	// Startup output buffers (only used during startup)
 	startupStdout *bytes.Buffer
 	startupStderr *bytes.Buffer
@@ -59,10 +61,11 @@ func (e *ProcessStartupError) Error() string {
 	return e.Err.Error()
 }
 
-func NewProcessManager(idleTimeout, startupTimeout caddy.Duration, logger *zap.Logger) (*ProcessManager, error) {
+func NewProcessManager(idleTimeout, startupTimeout caddy.Duration, env map[string]string, logger *zap.Logger) (*ProcessManager, error) {
 	logger.Info("creating new process manager",
 		zap.Duration("idle_timeout", time.Duration(idleTimeout)),
 		zap.Duration("startup_timeout", time.Duration(startupTimeout)),
+		zap.Any("env", env),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -70,6 +73,7 @@ func NewProcessManager(idleTimeout, startupTimeout caddy.Duration, logger *zap.L
 	pm := &ProcessManager{
 		idleTimeout:    idleTimeout,
 		startupTimeout: startupTimeout,
+		env:            env,
 		logger:         logger,
 		processes:      make(map[string]*Process),
 		ctx:            ctx,
@@ -170,6 +174,7 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 		LastUsed:      time.Now(),
 		onExit:        func() { pm.removeProcess(file) },
 		logger:        pm.logger,
+		env:           pm.env,
 		startupStdout: &bytes.Buffer{},
 		startupStderr: &bytes.Buffer{},
 	}
@@ -350,11 +355,18 @@ func (p *Process) start() error {
 	p.Cmd = exec.Command(p.Command, args...)
 	p.Cmd.Dir = filepath.Dir(p.Command)
 
+	// Set up environment variables
+	p.Cmd.Env = os.Environ() // Start with parent environment
+	for key, value := range p.env {
+		p.Cmd.Env = append(p.Cmd.Env, fmt.Sprintf("%s=%s", key, value))
+	}
+
 	p.logger.Debug("configuring process command",
 		zap.String("command", p.Command),
 		zap.Strings("args", args),
 		zap.String("working_dir", p.Cmd.Dir),
 		zap.String("host_port", fmt.Sprintf("%s:%d", p.Host, p.Port)),
+		zap.Any("env", p.env),
 	)
 
 	if err := configureProcessSecurity(p.Cmd, p.Command); err != nil {

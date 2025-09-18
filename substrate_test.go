@@ -419,3 +419,107 @@ func TestIdleTimeoutNegativeOneClosesAfterRequest(t *testing.T) {
 		t.Error("Process should be closed after second request when idle_timeout=-1")
 	}
 }
+
+func TestEnvironmentVariables_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Create test script that outputs environment variables
+	tempDir, err := os.MkdirTemp("", "substrate-env-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Deno script that returns environment variables
+	envServerScript := `#!/usr/bin/env -S deno run --allow-net --allow-env
+const [host, port] = Deno.args;
+
+const server = Deno.serve({
+  hostname: host,
+  port: parseInt(port)
+}, (req) => {
+  const testVar = Deno.env.get("TEST_VAR") || "not_set";
+  const apiKey = Deno.env.get("API_KEY") || "not_set";
+  const debugMode = Deno.env.get("DEBUG_MODE") || "not_set";
+
+  const response = {
+    TEST_VAR: testVar,
+    API_KEY: apiKey,
+    DEBUG_MODE: debugMode
+  };
+
+  return new Response(JSON.stringify(response), {
+    headers: { "Content-Type": "application/json" }
+  });
+});
+`
+
+	scriptPath := filepath.Join(tempDir, "env-server.js")
+	err = os.WriteFile(scriptPath, []byte(envServerScript), 0755)
+	if err != nil {
+		t.Fatalf("Failed to write test script: %v", err)
+	}
+
+	// Create transport with environment variables
+	transport := &SubstrateTransport{
+		IdleTimeout:    caddy.Duration(60 * time.Second),
+		StartupTimeout: caddy.Duration(5 * time.Second),
+		Env: map[string]string{
+			"TEST_VAR":   "test_value_123",
+			"API_KEY":    "secret_key_456",
+			"DEBUG_MODE": "true",
+		},
+	}
+
+	ctx := caddy.Context{Context: context.Background()}
+	err = transport.Provision(ctx)
+	if err != nil {
+		t.Fatalf("Failed to provision transport: %v", err)
+	}
+	defer transport.Cleanup()
+
+	// Start process
+	hostPort, err := transport.manager.getOrCreateHost(scriptPath)
+	if err != nil {
+		t.Fatalf("Failed to get host:port: %v", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Make request to get environment variables
+	resp, err := http.Get(fmt.Sprintf("http://%s/test", hostPort))
+	if err != nil {
+		t.Fatalf("Failed to connect to env server: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+
+	bodyStr := string(body)
+
+	// Verify environment variables are set correctly
+	expectedEnvVars := map[string]string{
+		"TEST_VAR":   "test_value_123",
+		"API_KEY":    "secret_key_456",
+		"DEBUG_MODE": "true",
+	}
+
+	for key, expectedValue := range expectedEnvVars {
+		expectedJSON := fmt.Sprintf(`"%s":"%s"`, key, expectedValue)
+		if !strings.Contains(bodyStr, expectedJSON) {
+			t.Errorf("Environment variable %s should be %s, response: %s", key, expectedValue, bodyStr)
+		}
+	}
+}
+
+// TODO: Add Caddyfile parsing test once we figure out the correct function to use
+// The UnmarshalCaddyfile functionality is tested through the integration tests

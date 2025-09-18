@@ -48,6 +48,7 @@ func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 	pm, err := NewProcessManager(
 		caddy.Duration(time.Minute),          // idle timeout
 		caddy.Duration(500*time.Millisecond), // startup timeout - longer for server startup
+		nil,                                  // no env vars for this test
 		logger,
 	)
 	if err != nil {
@@ -135,6 +136,7 @@ func TestProcessManager_NormalExitCleanup(t *testing.T) {
 	pm, err := NewProcessManager(
 		caddy.Duration(time.Minute),          // idle timeout
 		caddy.Duration(500*time.Millisecond), // startup timeout - longer for server startup
+		nil,                                  // no env vars for this test
 		logger,
 	)
 	if err != nil {
@@ -260,6 +262,7 @@ func TestProcessManager_GetOrCreateHost_FileValidation(t *testing.T) {
 	pm, err := NewProcessManager(
 		caddy.Duration(time.Minute),          // idle timeout
 		caddy.Duration(100*time.Millisecond), // startup timeout
+		nil,                                  // no env vars for this test
 		logger,
 	)
 	if err != nil {

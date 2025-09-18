@@ -18,8 +18,9 @@ func init() {
 }
 
 type SubstrateTransport struct {
-	IdleTimeout    caddy.Duration `json:"idle_timeout,omitempty"`
-	StartupTimeout caddy.Duration `json:"startup_timeout,omitempty"`
+	IdleTimeout    caddy.Duration    `json:"idle_timeout,omitempty"`
+	StartupTimeout caddy.Duration    `json:"startup_timeout,omitempty"`
+	Env            map[string]string `json:"env,omitempty"`
 
 	ctx       caddy.Context
 	transport http.RoundTripper
@@ -46,6 +47,7 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 	t.logger.Debug("provisioning substrate transport",
 		zap.Duration("idle_timeout", time.Duration(t.IdleTimeout)),
 		zap.Duration("startup_timeout", time.Duration(t.StartupTimeout)),
+		zap.Any("env", t.Env),
 	)
 
 	httpTransport := new(reverseproxy.HTTPTransport)
@@ -56,7 +58,7 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 	t.transport = httpTransport.Transport
 	t.logger.Debug("HTTP transport provisioned successfully")
 
-	manager, err := NewProcessManager(t.IdleTimeout, t.StartupTimeout, t.logger)
+	manager, err := NewProcessManager(t.IdleTimeout, t.StartupTimeout, t.Env, t.logger)
 	if err != nil {
 		t.logger.Error("failed to create process manager", zap.Error(err))
 		return fmt.Errorf("failed to create process manager: %w", err)
@@ -67,6 +69,7 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 	t.logger.Info("substrate transport provisioned",
 		zap.Duration("idle_timeout", time.Duration(t.IdleTimeout)),
 		zap.Duration("startup_timeout", time.Duration(t.StartupTimeout)),
+		zap.Any("env", t.Env),
 	)
 
 	return nil
@@ -131,6 +134,18 @@ func (t *SubstrateTransport) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 					return d.Errf("parsing startup_timeout: %v", err)
 				}
 				t.StartupTimeout = caddy.Duration(dur)
+			case "env":
+				if t.Env == nil {
+					t.Env = make(map[string]string)
+				}
+				for d.NextBlock(1) {
+					key := d.Val()
+					if !d.NextArg() {
+						return d.Errf("env directive requires key-value pairs")
+					}
+					value := d.Val()
+					t.Env[key] = value
+				}
 			default:
 				return d.Errf("unknown directive: %s", d.Val())
 			}
