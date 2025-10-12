@@ -1,0 +1,5 @@
+single proc substrate: 37,650.91 req/s latency 0.01 ms
+one-shot substrate: 170.5 req/s latency 58.08 ms
+FastCGI start own server: 1,544.4 req/s latency 5.99 ms
+CGI: 377 req/s latency 26.02 ms
+

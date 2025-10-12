@@ -26,6 +26,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.3.0 // indirect
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/Microsoft/go-winio v0.6.0 // indirect
+	github.com/aksdb/caddy-cgi/v2 v2.2.6 // indirect
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/aryann/difflib v0.0.0-20210328193216-ff5ff6dc229b // indirect

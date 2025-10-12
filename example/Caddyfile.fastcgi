@@ -6,7 +6,7 @@
     }
 }
 
-:4321 {
+:4322 {
 	root example
 
 	@js_files {
@@ -14,12 +14,12 @@
 		file {path}
 	}
 	reverse_proxy @js_files {
-		transport substrate {
-			idle_timeout -1
+		transport fastcgi {
+			root example
+			split .js
 		}
-		to localhost
+		to localhost:9000
 	}
 
 	file_server
 }
-

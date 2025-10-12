@@ -1,34 +1,14 @@
-// simplest deno http server
+#!/usr/bin/env -S deno run --allow-net
 
-const PORT = 4242;
+const [host, port] = Deno.args;
 
-const sub = Deno.env.get("SUBSTRATE");
+let cnt = 0;
 
-console.log("GOING TO", sub);
-
-if (sub) {
-  await fetch(sub, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      host: `:${PORT}`,
-      match: [".md"],
-      paths: ["/up"],
-      catch_all: ["/all.md"],
-    }),
-  });
-}
-
-Deno.serve({ port: PORT }, (req) => {
-  const path = req.url;
-  const fp = req.headers.get("x-forwarded-path");
-  return new Response(`Hello, World!
-
-sub: ${sub}
-path: ${path}
-fp: ${fp}
-`);
-});
+const server = Deno.serve({
+  hostname: host === "localhost" ? "127.0.0.1" : host,
+  port: parseInt(port),
+  onListen({ hostname, port }) {
+    console.log(`Listening on http://${hostname}:${port}`);
+  },
+}, (req) => new Response(`hello ${++cnt}\n`));
 
