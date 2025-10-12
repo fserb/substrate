@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -175,14 +176,24 @@ func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error
 		)
 	}
 
+	// Convert to absolute path for consistent process tracking
+	absFilePath, err := filepath.Abs(filePath)
+	if err != nil {
+		t.logger.Error("failed to get absolute path",
+			zap.String("file_path", filePath),
+			zap.Error(err),
+		)
+		return nil, fmt.Errorf("failed to get absolute path: %w", err)
+	}
+
 	t.logger.Info("routing request to subprocess",
 		zap.String("method", req.Method),
 		zap.String("url", req.URL.Path),
-		zap.String("file_path", filePath),
+		zap.String("file_path", absFilePath),
 		zap.String("remote_addr", req.RemoteAddr),
 	)
 
-	hostPort, err := t.manager.getOrCreateHost(filePath)
+	hostPort, err := t.manager.getOrCreateHost(absFilePath)
 	if err != nil {
 		t.logger.Error("failed to get or create host for file",
 			zap.String("file_path", filePath),
@@ -261,7 +272,7 @@ func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error
 
 	// Close process after request if idle_timeout is -1
 	if t.IdleTimeout == -1 {
-		go t.manager.closeProcessAfterRequest(filePath)
+		go t.manager.closeProcessAfterRequest(absFilePath)
 	}
 
 	return resp, nil
