@@ -10,6 +10,7 @@ import (
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp/reverseproxy"
 	"go.uber.org/zap"
 )
@@ -27,6 +28,21 @@ type SubstrateTransport struct {
 	transport http.RoundTripper
 	manager   *ProcessManager
 	logger    *zap.Logger
+}
+
+// oneShotBodyWrapper wraps a response body to trigger cleanup after body is fully read
+type oneShotBodyWrapper struct {
+	io.ReadCloser
+	onClose func()
+}
+
+func (w *oneShotBodyWrapper) Close() error {
+	err := w.ReadCloser.Close()
+	if w.onClose != nil {
+		w.onClose()
+		w.onClose = nil // Ensure cleanup only happens once
+	}
+	return err
 }
 
 func (SubstrateTransport) CaddyModule() caddy.ModuleInfo {
@@ -51,12 +67,14 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 		zap.Any("env", t.Env),
 	)
 
+	// Create HTTP transport with Unix socket support
 	httpTransport := new(reverseproxy.HTTPTransport)
 	if err := httpTransport.Provision(ctx); err != nil {
 		t.logger.Error("failed to provision HTTP transport", zap.Error(err))
 		return fmt.Errorf("failed to provision HTTP transport: %w", err)
 	}
-	t.transport = httpTransport.Transport
+
+	t.transport = httpTransport
 	t.logger.Debug("HTTP transport provisioned successfully")
 
 	manager, err := NewProcessManager(t.IdleTimeout, t.StartupTimeout, t.Env, t.logger)
@@ -193,9 +211,9 @@ func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error
 		zap.String("remote_addr", req.RemoteAddr),
 	)
 
-	hostPort, err := t.manager.getOrCreateHost(absFilePath)
+	socketPath, err := t.manager.getOrCreateHost(absFilePath)
 	if err != nil {
-		t.logger.Error("failed to get or create host for file",
+		t.logger.Error("failed to get or create socket for file",
 			zap.String("file_path", filePath),
 			zap.Error(err),
 		)
@@ -236,44 +254,55 @@ func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error
 
 	t.logger.Debug("proxying request to process",
 		zap.String("file_path", filePath),
-		zap.String("target_host_port", hostPort),
-		zap.String("original_host", req.URL.Host),
+		zap.String("socket_path", socketPath),
 	)
 
-	originalHost := req.URL.Host
-	originalScheme := req.URL.Scheme
-	req.URL.Host = hostPort
-	req.URL.Scheme = "http"
+	// Create a unique host for each socket to enable proper connection pooling.
+	// http.Transport keys connections by req.URL.Host, so different sockets need different hosts.
+	// We use {socketname}.localhost format (e.g., "substrate-123456.localhost").
+	// The .localhost TLD ensures no external DNS lookups per RFC.
+	socketName := strings.TrimSuffix(filepath.Base(socketPath), ".sock")
+	req.URL.Host = socketName + ".localhost"
+
+	// Set dial info in the request context so HTTPTransport knows to use Unix socket
+	dialInfo := reverseproxy.DialInfo{
+		Network: "unix",
+		Address: socketPath,
+	}
+	caddyhttp.SetVar(req.Context(), "reverse_proxy.dial_info", dialInfo)
 
 	start := time.Now()
 	resp, err := t.transport.RoundTrip(req)
 	duration := time.Since(start)
 
-	// Restore original URL in case of error
 	if err != nil {
-		req.URL.Host = originalHost
-		req.URL.Scheme = originalScheme
 		t.logger.Error("process request failed",
 			zap.String("file_path", filePath),
-			zap.String("target_host_port", hostPort),
+			zap.String("socket_path", socketPath),
 			zap.Duration("duration", duration),
 			zap.Error(err),
 		)
 		return nil, fmt.Errorf("request to process failed: %w", err)
 	}
 
+	// In one-shot mode, wrap response body to trigger cleanup after body is fully transmitted
+	if t.IdleTimeout == -1 {
+		resp.Body = &oneShotBodyWrapper{
+			ReadCloser: resp.Body,
+			onClose: func() {
+				// Use goroutine so body close isn't blocked waiting for process to stop
+				go t.manager.closeProcessAfterRequest(absFilePath)
+			},
+		}
+	}
+
 	t.logger.Info("request completed successfully",
 		zap.String("file_path", filePath),
-		zap.String("target_host_port", hostPort),
+		zap.String("socket_path", socketPath),
 		zap.Duration("duration", duration),
 		zap.Int("status_code", resp.StatusCode),
 		zap.Int64("content_length", resp.ContentLength),
 	)
-
-	// Close process after request if idle_timeout is -1
-	if t.IdleTimeout == -1 {
-		go t.manager.closeProcessAfterRequest(absFilePath)
-	}
 
 	return resp, nil
 }

@@ -18,10 +18,10 @@ func TestConcurrentRequestsToSameProcess(t *testing.T) {
 		to localhost
 	}`
 
-	concurrentServer := `#!/usr/bin/env -S deno run --allow-net
+	concurrentServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
 let requestCount = 0;
 
-Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) => {
+Deno.serve({path: Deno.args[0]}, async (req) => {
 	await new Promise(resolve => setTimeout(resolve, 10));
 
 	return new Response((++requestCount).toString());
@@ -92,11 +92,11 @@ func TestConcurrentRequestsToDifferentProcesses(t *testing.T) {
 		to localhost
 	}`
 
-	serverTemplate := `#!/usr/bin/env -S deno run --allow-net
+	serverTemplate := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
 const serverName = "%s";
 let requestCount = 0;
 
-Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) => {
+Deno.serve({path: Deno.args[0]}, async (req) => {
 	await new Promise(resolve => setTimeout(resolve, 50));
 
 	return new Response(serverName + " request #" + (++requestCount));
@@ -171,10 +171,10 @@ func TestHighConcurrencyToSingleProcess(t *testing.T) {
 		to localhost
 	}`
 
-	highConcurrencyServer := `#!/usr/bin/env -S deno run --allow-net
+	highConcurrencyServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
 let totalRequests = 0;
 
-Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) => {
+Deno.serve({path: Deno.args[0]}, async (req) => {
 	await new Promise(resolve => setTimeout(resolve, 5));
 
 	return new Response((++totalRequests).toString());

@@ -22,17 +22,16 @@ func TestProcessStdoutLogging(t *testing.T) {
 	files := []TestFile{
 		{
 			Path: "stdout_test.js",
-			Content: `#!/usr/bin/env -S deno run --allow-net
-const [host, port] = Deno.args;
+			Content: `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
+const [socketPath] = Deno.args;
 
 // Log some messages to stdout and stderr
-console.log("Starting server on " + host + ":" + port);
+console.log("Starting server on " + socketPath);
 console.error("This is an error message");
 console.log("Server ready");
 
 const server = Deno.serve({
-  hostname: host === "localhost" ? "127.0.0.1" : host,
-  port: parseInt(port)
+  path: socketPath
 }, (req) => {
   console.log("Handling request to: " + req.url);
   return new Response("Hello from stdout test!");
@@ -62,12 +61,12 @@ Deno.addSignalListener("SIGTERM", () => {
 }
 
 func TestProcessStderrLogging(t *testing.T) {
-	serverBlock := `@py_files {
-		path *.py
+	serverBlock := `@js_files {
+		path *.js
 		file {path}
 	}
 
-	reverse_proxy @py_files {
+	reverse_proxy @js_files {
 		transport substrate {
 			idle_timeout 1m
 			startup_timeout 10s
@@ -77,58 +76,29 @@ func TestProcessStderrLogging(t *testing.T) {
 
 	files := []TestFile{
 		{
-			Path: "stderr_test.py",
-			Content: `#!/usr/bin/env python3
-import sys
-import http.server
-import socketserver
-import threading
+			Path: "stderr_test.js",
+			Content: `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
+const [socketPath] = Deno.args;
 
-def main():
-    if len(sys.argv) < 3:
-        print("Usage: script.py <host> <port>", file=sys.stderr)
-        sys.exit(1)
+// Log messages to both stdout and stderr
+console.log("Starting server on " + socketPath);
+console.error("Warning: This is a test warning");
+console.log("Server initialization complete");
 
-    host = sys.argv[1]
-    port = int(sys.argv[2])
+const server = Deno.serve({path: socketPath}, (req) => {
+	const url = new URL(req.url);
+	console.log("Processing request: " + url.pathname);
+	console.error("Debug: Request received");
+	return new Response("Hello from stderr test!");
+});
 
-    # Log messages to both stdout and stderr
-    print(f"Starting Python server on {host}:{port}")
-    print(f"Warning: This is a test warning", file=sys.stderr)
-    print("Server initialization complete")
-
-    class Handler(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):
-            print(f"Processing request: {self.path}")
-            print(f"Debug: Request from {self.client_address}", file=sys.stderr)
-            self.send_response(200)
-            self.send_header('Content-type', 'text/plain')
-            self.end_headers()
-            self.wfile.write(b"Hello from stderr test!")
-
-        def log_message(self, format, *args):
-            # Suppress default HTTP server logs
-            pass
-
-    with socketserver.TCPServer((host if host != "localhost" else "127.0.0.1", port), Handler) as httpd:
-        print(f"Server ready on {host}:{port}")
-
-        def shutdown_handler():
-            import signal
-            def signal_handler(signum, frame):
-                print("Received shutdown signal", file=sys.stderr)
-                print("Shutting down server")
-                httpd.shutdown()
-            signal.signal(signal.SIGTERM, signal_handler)
-
-        shutdown_thread = threading.Thread(target=shutdown_handler)
-        shutdown_thread.daemon = True
-        shutdown_thread.start()
-
-        httpd.serve_forever()
-
-if __name__ == "__main__":
-    main()
+// Graceful shutdown
+Deno.addSignalListener("SIGTERM", () => {
+	console.error("Received shutdown signal");
+	console.log("Shutting down server");
+	server.shutdown();
+	Deno.exit(0);
+});
 `,
 			Mode: 0755,
 		},
@@ -137,13 +107,13 @@ if __name__ == "__main__":
 	ctx := RunE2ETest(t, serverBlock, files)
 
 	// Make a request to trigger process startup and logging
-	ctx.AssertGet("/stderr_test.py", "Hello from stderr test!")
+	ctx.AssertGet("/stderr_test.js", "Hello from stderr test!")
 
 	// Give some time for logs to be processed
 	time.Sleep(100 * time.Millisecond)
 
 	// Make another request to trigger more logging
-	ctx.AssertGet("/stderr_test.py", "Hello from stderr test!")
+	ctx.AssertGet("/stderr_test.js", "Hello from stderr test!")
 }
 
 func TestProcessOutputWithCrash(t *testing.T) {
@@ -163,44 +133,29 @@ func TestProcessOutputWithCrash(t *testing.T) {
 	files := []TestFile{
 		{
 			Path: "crash_test.sh",
-			Content: `#!/bin/bash
-host=$1
-port=$2
+			Content: `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
+const [socketPath] = Deno.args;
 
-echo "Starting crash test server on $host:$port"
-echo "This server will crash after starting" >&2
+console.log("Starting crash test server on " + socketPath);
+console.error("This server will crash after starting");
 
-# Start a simple HTTP server that crashes
-python3 -c "
-import http.server
-import socketserver
-import sys
-import time
+let requestCount = 0;
 
-host = '$host' if '$host' != 'localhost' else '127.0.0.1'
-port = int('$port')
+Deno.serve({path: socketPath}, (req) => {
+	requestCount++;
+	console.log("Handling request before crash");
+	console.error("About to crash!");
 
-print('Python server starting on ' + host + ':' + str(port))
-print('Warning: Server will crash soon', file=sys.stderr)
+	if (requestCount === 1) {
+		// Crash after first request
+		setTimeout(() => {
+			console.error("Crashing now!");
+			Deno.exit(1);
+		}, 10);
+	}
 
-class Handler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        print('Handling request before crash')
-        print('About to crash!', file=sys.stderr)
-        self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
-        self.end_headers()
-        self.wfile.write(b'Response before crash')
-        # Crash after first request
-        sys.exit(1)
-
-    def log_message(self, format, *args):
-        pass
-
-with socketserver.TCPServer((host, port), Handler) as httpd:
-    print('Server ready, waiting for crash trigger')
-    httpd.serve_forever()
-"
+	return new Response("Response before crash");
+});
 `,
 			Mode: 0755,
 		},

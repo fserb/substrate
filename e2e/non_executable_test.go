@@ -15,13 +15,13 @@ func TestNonExecutableFilesReturnError(t *testing.T) {
 		to localhost
 	}`
 
-	executableServer := `#!/usr/bin/env -S deno run --allow-net
-Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
+	executableServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
+Deno.serve({path: Deno.args[0]}, (req) => {
 	return new Response("Executable server response");
 });`
 
-	nonExecutableServer := `#!/usr/bin/env -S deno run --allow-net
-Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
+	nonExecutableServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
+Deno.serve({path: Deno.args[0]}, (req) => {
 	return new Response("This should not run");
 });`
 
@@ -48,8 +48,8 @@ func TestReadOnlyFileReturnError(t *testing.T) {
 		to localhost
 	}`
 
-	readOnlyServer := `#!/usr/bin/env -S deno run --allow-net
-Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
+	readOnlyServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
+Deno.serve({path: Deno.args[0]}, (req) => {
 	return new Response("This should not run");
 });`
 

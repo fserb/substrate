@@ -20,8 +20,8 @@ func TestProcessWorkingDirectory(t *testing.T) {
 	file_server`
 
 	// Test script that outputs its current working directory
-	cwdServer := `#!/usr/bin/env -S deno run --allow-net --allow-read
-Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
+	cwdServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
+Deno.serve({path: Deno.args[0]}, (req) => {
   return new Response(Deno.cwd());
 });`
 
@@ -48,8 +48,8 @@ func TestNestedDirectoryWorkingDirectory(t *testing.T) {
 
 	file_server`
 
-	relativeReadServer := `#!/usr/bin/env -S deno run --allow-net --allow-read
-Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, async (req) => {
+	relativeReadServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
+Deno.serve({path: Deno.args[0]}, async (req) => {
 	return new Response(await Deno.readTextFile("./data.txt"));
 });`
 
@@ -77,8 +77,8 @@ func TestWorkingDirectoryWithSymlink(t *testing.T) {
 
 	file_server`
 
-	cwdServer := `#!/usr/bin/env -S deno run --allow-net --allow-read
-Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
+	cwdServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
+Deno.serve({path: Deno.args[0]}, (req) => {
 	return new Response(Deno.cwd());
 });`
 

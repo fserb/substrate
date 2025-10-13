@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -16,9 +15,10 @@ func TestSimpleSubstrateRequest(t *testing.T) {
 		to localhost
 	}`
 
-	jsServer := `#!/usr/bin/env -S deno run --allow-net
-Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
-	return new Response("Hello from substrate process!\nURL: " + req.url, {
+	jsServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
+Deno.serve({path: Deno.args[0]}, (req) => {
+	const url = new URL(req.url);
+	return new Response("Hello from substrate process!\nPath: " + url.pathname, {
     headers: { "Content-Type": "text/plain" }
   });
 });`
@@ -29,5 +29,5 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, (req) => {
 
 	ctx := RunE2ETest(t, serverBlock, files)
 
-	ctx.AssertGet("/hello.js", fmt.Sprintf("Hello from substrate process!\nURL: %s/hello.js", ctx.BaseURL))
+	ctx.AssertGet("/hello.js", "Hello from substrate process!\nPath: /hello.js")
 }

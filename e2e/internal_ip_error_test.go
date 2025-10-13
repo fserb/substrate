@@ -20,7 +20,7 @@ func TestDetailedErrorForInternalIP(t *testing.T) {
 	}`
 
 	// Create a script that will fail to start
-	failingScript := `#!/usr/bin/env -S deno run --allow-net
+	failingScript := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
 console.log("Starting failing script...");
 console.error("This will be captured in stderr");
 // This will cause a syntax error
@@ -86,13 +86,13 @@ func TestProcessStartupTimeout(t *testing.T) {
 	}`
 
 	// Create a script that takes too long to start
-	slowScript := `#!/usr/bin/env -S deno run --allow-net
+	slowScript := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
 console.log("Starting slow script...");
 console.error("This is stderr output");
 // Wait longer than the timeout
 await new Promise(resolve => setTimeout(resolve, 200));
 console.log("Finally starting server (but this will be too late)");
-Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, () => {
+Deno.serve({path: Deno.args[0]}, () => {
 	return new Response("Too slow!");
 });
 `
@@ -123,7 +123,7 @@ Deno.serve({hostname: Deno.args[0], port: parseInt(Deno.args[1])}, () => {
 	expectedStrings := []string{
 		"Process startup failed",
 		"timeout",
-		"Exit code: 0", // Process exists but isn't bound to port yet
+		"Exit code: -1", // Process was terminated by SIGTERM (signal termination returns -1)
 	}
 
 	for _, expected := range expectedStrings {

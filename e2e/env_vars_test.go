@@ -26,10 +26,10 @@ func TestEnvironmentVariables(t *testing.T) {
 		to localhost
 	}`
 
-	envServer := `#!/usr/bin/env -S deno run --allow-net --allow-env
-const [host, port] = Deno.args;
+	envServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write --allow-env --allow-read
+const [socketPath] = Deno.args;
 
-Deno.serve({hostname: host, port: parseInt(port)}, (req) => {
+Deno.serve({path: socketPath}, (req) => {
 	const envVars = {
 		NODE_ENV: Deno.env.get("NODE_ENV") || "not_set",
 		API_KEY: Deno.env.get("API_KEY") || "not_set",
@@ -112,10 +112,10 @@ func TestEnvironmentVariablesMultipleProcesses(t *testing.T) {
 	}`
 
 	// First process - returns SHARED_VAR and PROCESS_TYPE
-	process1 := `#!/usr/bin/env -S deno run --allow-net --allow-env
-const [host, port] = Deno.args;
+	process1 := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write --allow-env --allow-read
+const [socketPath] = Deno.args;
 
-Deno.serve({hostname: host, port: parseInt(port)}, (req) => {
+Deno.serve({path: socketPath}, (req) => {
 	const response = {
 		process: "process1",
 		SHARED_VAR: Deno.env.get("SHARED_VAR") || "not_set",
@@ -127,10 +127,10 @@ Deno.serve({hostname: host, port: parseInt(port)}, (req) => {
 });`
 
 	// Second process - also returns the same env vars
-	process2 := `#!/usr/bin/env -S deno run --allow-net --allow-env
-const [host, port] = Deno.args;
+	process2 := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write --allow-env --allow-read
+const [socketPath] = Deno.args;
 
-Deno.serve({hostname: host, port: parseInt(port)}, (req) => {
+Deno.serve({path: socketPath}, (req) => {
 	const response = {
 		process: "process2",
 		SHARED_VAR: Deno.env.get("SHARED_VAR") || "not_set",
@@ -196,10 +196,10 @@ func TestEnvironmentVariablesEmpty(t *testing.T) {
 		to localhost
 	}`
 
-	envServer := `#!/usr/bin/env -S deno run --allow-net --allow-env
-const [host, port] = Deno.args;
+	envServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write --allow-env --allow-read
+const [socketPath] = Deno.args;
 
-Deno.serve({hostname: host, port: parseInt(port)}, (req) => {
+Deno.serve({path: socketPath}, (req) => {
 	// Should still inherit parent environment
 	const hasPath = Deno.env.get("PATH") ? true : false;
 

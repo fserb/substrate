@@ -8,29 +8,28 @@ import (
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest"
 )
 
-const simpleServerScript = `#!/usr/bin/env -S deno run --allow-net
+const simpleServerScript = `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
 // Simple HTTP server for testing substrate transport
 
-const [host, port] = Deno.args;
+const [socketPath] = Deno.args;
 
-if (!host || !port) {
-  console.error("Usage: simple_server.js <host> <port>");
+if (!socketPath) {
+  console.error("Usage: simple_server.js <socket-path>");
   Deno.exit(1);
 }
 
 const server = Deno.serve({
-  hostname: host,
-  port: parseInt(port)
+  path: socketPath,
 }, (req) => {
-  return new Response(` + "`Hello from substrate process!\nHost: ${host}\nPort: ${port}\nURL: ${req.url}\nMethod: ${req.method}\nUser-Agent: ${req.headers.get(\"user-agent\") ?? \"unknown\"}`" + `, {
+  return new Response(` + "`Hello from substrate process!\nSocket: ${socketPath}\nURL: ${req.url}\nMethod: ${req.method}\nUser-Agent: ${req.headers.get(\"user-agent\") ?? \"unknown\"}`" + `, {
     headers: { "Content-Type": "text/plain" }
   });
 });
 
-console.log(` + "`Server running at http://${host}:${port}/`" + `);
+console.log(` + "`Server listening on Unix socket: ${socketPath}`" + `);
 
 // Graceful shutdown
 Deno.addSignalListener("SIGTERM", () => {
@@ -44,11 +43,11 @@ func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	logger := zap.NewNop()
+	logger := zaptest.NewLogger(t)
 	pm, err := NewProcessManager(
-		caddy.Duration(time.Minute),          // idle timeout
-		caddy.Duration(500*time.Millisecond), // startup timeout - longer for server startup
-		nil,                                  // no env vars for this test
+		caddy.Duration(time.Minute),   // idle timeout
+		caddy.Duration(1*time.Second), // startup timeout
+		nil,                           // no env vars for this test
 		logger,
 	)
 	if err != nil {
@@ -56,21 +55,15 @@ func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 	}
 	defer pm.Stop()
 
-	// Create a Deno script that starts a server but exits after a short delay
 	tmpDir := t.TempDir()
 	exitScript := filepath.Join(tmpDir, "exit.js")
-	scriptContent := `#!/usr/bin/env -S deno run --allow-net
-const [host, port] = Deno.args;
-
-// Start server
+	scriptContent := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
 const server = Deno.serve({
-  hostname: host,
-  port: parseInt(port)
+  path: Deno.args[0],
 }, () => new Response("OK"));
 
 console.log("Server started, will exit with code 42 after 1 second");
 
-// Exit after delay with code 42 - delay long enough for startup timeout to complete
 setTimeout(() => {
   server.shutdown();
   Deno.exit(42);
@@ -81,10 +74,10 @@ setTimeout(() => {
 		t.Fatalf("Failed to create exit script: %v", err)
 	}
 
-	// Get host:port for the script - this will start the process
-	hostPort, err := pm.getOrCreateHost(exitScript)
+	// Get socket path for the script - this will start the process
+	socketPath, err := pm.getOrCreateHost(exitScript)
 	if err != nil {
-		t.Fatalf("Failed to get host:port: %v", err)
+		t.Fatalf("Failed to get socket path: %v", err)
 	}
 
 	// Verify the process was added to the map
@@ -121,9 +114,9 @@ setTimeout(() => {
 		t.Error("Exited process should be removed from processes map")
 	}
 
-	// Verify we got a valid host:port initially
-	if hostPort == "" {
-		t.Error("Host:port should not be empty")
+	// Verify we got a valid socket path initially
+	if socketPath == "" {
+		t.Error("Socket path should not be empty")
 	}
 }
 
@@ -132,11 +125,11 @@ func TestProcessManager_NormalExitCleanup(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	logger := zap.NewNop()
+	logger := zaptest.NewLogger(t)
 	pm, err := NewProcessManager(
-		caddy.Duration(time.Minute),          // idle timeout
-		caddy.Duration(500*time.Millisecond), // startup timeout - longer for server startup
-		nil,                                  // no env vars for this test
+		caddy.Duration(time.Minute),   // idle timeout
+		caddy.Duration(3*time.Second), // startup timeout
+		nil,                           // no env vars for this test
 		logger,
 	)
 	if err != nil {
@@ -147,13 +140,12 @@ func TestProcessManager_NormalExitCleanup(t *testing.T) {
 	// Create a Deno script that starts a server but exits normally after a short delay
 	tmpDir := t.TempDir()
 	normalScript := filepath.Join(tmpDir, "normal.js")
-	scriptContent := `#!/usr/bin/env -S deno run --allow-net
-const [host, port] = Deno.args;
+	scriptContent := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
+const [socketPath] = Deno.args;
 
 // Start server
 const server = Deno.serve({
-  hostname: host,
-  port: parseInt(port)
+  path: socketPath,
 }, () => new Response("OK"));
 
 console.log("Server started, will exit normally after 1 second");
@@ -169,10 +161,10 @@ setTimeout(() => {
 		t.Fatalf("Failed to create normal exit script: %v", err)
 	}
 
-	// Get host:port for the script - this will start the process
-	hostPort, err := pm.getOrCreateHost(normalScript)
+	// Get socket path for the script - this will start the process
+	socketPath, err := pm.getOrCreateHost(normalScript)
 	if err != nil {
-		t.Fatalf("Failed to get host:port: %v", err)
+		t.Fatalf("Failed to get socket path: %v", err)
 	}
 
 	// Verify the process was added to the map
@@ -209,9 +201,9 @@ setTimeout(() => {
 		t.Error("Normally exited process should also be removed from processes map")
 	}
 
-	// Verify we got a valid host:port initially
-	if hostPort == "" {
-		t.Error("Host:port should not be empty")
+	// Verify we got a valid socket path initially
+	if socketPath == "" {
+		t.Error("Socket path should not be empty")
 	}
 }
 
@@ -258,11 +250,11 @@ func TestValidateFilePath(t *testing.T) {
 }
 
 func TestProcessManager_GetOrCreateHost_FileValidation(t *testing.T) {
-	logger := zap.NewNop()
+	logger := zaptest.NewLogger(t)
 	pm, err := NewProcessManager(
-		caddy.Duration(time.Minute),          // idle timeout
-		caddy.Duration(100*time.Millisecond), // startup timeout
-		nil,                                  // no env vars for this test
+		caddy.Duration(time.Minute),   // idle timeout
+		caddy.Duration(3*time.Second), // startup timeout
+		nil,                           // no env vars for this test
 		logger,
 	)
 	if err != nil {
@@ -291,21 +283,21 @@ func TestProcessManager_GetOrCreateHost_FileValidation(t *testing.T) {
 }
 
 func TestProcess_CrashDetection(t *testing.T) {
-	logger := zap.NewNop()
+	logger := zaptest.NewLogger(t)
 
 	// Create a process that will crash (exit with code 1)
 	process := &Process{
-		Command:  "sh",
-		Host:     "localhost",
-		Port:     12346,
-		LastUsed: time.Now(),
-		onExit:   func() {},
-		logger:   logger,
+		Command:    "sh",
+		SocketPath: "/tmp/test.sock",
+		LastUsed:   time.Now(),
+		onExit:     func() {},
+		logger:     logger,
+		exitChan:   make(chan struct{}),
 	}
 
 	// Override the command args to make it crash
 	process.mu.Lock()
-	// We need to manually set this up since start() would construct normal host/port args
+	// We need to manually set this up since start() would construct normal socket path args
 	process.Cmd = exec.Command("sh", "-c", "exit 1")
 	process.mu.Unlock()
 

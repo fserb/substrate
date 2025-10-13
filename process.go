@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -33,19 +35,22 @@ type ProcessManager struct {
 }
 
 type Process struct {
-	Command  string
-	Host     string
-	Port     int
-	Cmd      *exec.Cmd
-	LastUsed time.Time
-	exitCode int
-	onExit   func()
-	mu       sync.RWMutex
-	logger   *zap.Logger
-	env      map[string]string
+	Command    string
+	SocketPath string
+	Cmd        *exec.Cmd
+	LastUsed   time.Time
+	exitCode   int
+	onExit     func()
+	mu         sync.RWMutex
+	logger     *zap.Logger
+	env        map[string]string
 	// Startup output buffers (only used during startup)
 	startupStdout *bytes.Buffer
 	startupStderr *bytes.Buffer
+	// Track intentional stops to avoid logging them as crashes
+	stopping       bool
+	exitChan       chan struct{}
+	activeRequests int // Reference counting for one-shot mode
 }
 
 // ProcessStartupError contains detailed information about process startup failures
@@ -118,9 +123,31 @@ func validateFilePath(filePath string) error {
 	return nil
 }
 
-func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
-	pm.logger.Debug("getOrCreateHost called", zap.String("file", file))
+// getSocketPath generates a unique Unix domain socket path using random hex strings
+func getSocketPath() (string, error) {
+	const maxAttempts = 10
 
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		// Generate 8 random bytes (16 hex characters)
+		randomBytes := make([]byte, 8)
+		if _, err := rand.Read(randomBytes); err != nil {
+			return "", fmt.Errorf("failed to generate random bytes: %w", err)
+		}
+		hexString := hex.EncodeToString(randomBytes)
+
+		socketPath := filepath.Join(os.TempDir(), fmt.Sprintf("substrate-%s.sock", hexString))
+
+		// Check if file already exists
+		if _, err := os.Stat(socketPath); os.IsNotExist(err) {
+			return socketPath, nil
+		}
+		// If file exists, try again with a new random name
+	}
+
+	return "", fmt.Errorf("failed to generate unique socket path after %d attempts", maxAttempts)
+}
+
+func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 	if err := validateFilePath(file); err != nil {
 		pm.logger.Error("file path validation failed",
 			zap.String("file", file),
@@ -132,62 +159,65 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
+	// Try to reuse existing process (works for all modes including one-shot)
 	if process, exists := pm.processes[file]; exists {
 		process.mu.Lock()
 		process.LastUsed = time.Now()
-		hostPort := fmt.Sprintf("%s:%d", process.Host, process.Port)
+		process.activeRequests++
+		socketPath := process.SocketPath
 		pid := process.Cmd.Process.Pid
+		activeCount := process.activeRequests
 		process.mu.Unlock()
 
 		pm.logger.Debug("reusing existing process",
 			zap.String("file", file),
-			zap.String("host_port", hostPort),
+			zap.String("socket_path", socketPath),
 			zap.Int("pid", pid),
+			zap.Int("active_requests", activeCount),
 		)
-		return hostPort, nil
+		return socketPath, nil
 	}
 
 	pm.logger.Info("creating new process",
 		zap.String("file", file),
 	)
 
-	host := "localhost"
-
-	port, err := getFreePort()
+	socketPath, err := getSocketPath()
 	if err != nil {
-		pm.logger.Error("failed to get free port",
+		pm.logger.Error("failed to generate socket path",
 			zap.String("file", file),
 			zap.Error(err),
 		)
-		return "", fmt.Errorf("failed to get free port: %w", err)
+		return "", fmt.Errorf("failed to generate socket path: %w", err)
 	}
 
-	pm.logger.Debug("allocated free port",
+	pm.logger.Debug("generated socket path",
 		zap.String("file", file),
-		zap.Int("port", port),
+		zap.String("socket_path", socketPath),
 	)
 
 	process := &Process{
-		Command:       file,
-		Host:          host,
-		Port:          port,
-		LastUsed:      time.Now(),
-		onExit:        func() { pm.removeProcess(file) },
-		logger:        pm.logger,
-		env:           pm.env,
-		startupStdout: &bytes.Buffer{},
-		startupStderr: &bytes.Buffer{},
+		Command:        file,
+		SocketPath:     socketPath,
+		LastUsed:       time.Now(),
+		onExit:         func() { pm.removeProcess(file) },
+		logger:         pm.logger,
+		env:            pm.env,
+		startupStdout:  &bytes.Buffer{},
+		startupStderr:  &bytes.Buffer{},
+		activeRequests: 1, // Start with 1 active request
+		exitChan:       make(chan struct{}),
 	}
 
 	pm.logger.Debug("starting process",
 		zap.String("file", file),
-		zap.String("host_port", fmt.Sprintf("%s:%d", host, port)),
+		zap.String("socket_path", socketPath),
 	)
 
 	if err := process.start(); err != nil {
 		pm.logger.Error("failed to start process",
 			zap.String("file", file),
-			zap.Int("port", port),
+			zap.String("socket_path", socketPath),
 			zap.Error(err),
 		)
 		return "", &ProcessStartupError{
@@ -203,23 +233,42 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 
 	pm.logger.Info("started process",
 		zap.String("file", file),
-		zap.String("host:port", fmt.Sprintf("%s:%d", host, port)),
+		zap.String("socket_path", socketPath),
 		zap.Int("pid", process.Cmd.Process.Pid),
 	)
 
-	if err := pm.waitForPortReady(host, port, time.Duration(pm.startupTimeout), process); err != nil {
+	if err := pm.waitForSocketReady(socketPath, time.Duration(pm.startupTimeout), process); err != nil {
+		// Check if process already exited before we try to stop it
+		exitCode := -1
+		processAlreadyExited := false
+		if process.Cmd != nil && process.Cmd.ProcessState != nil && process.Cmd.ProcessState.Exited() {
+			exitCode = process.Cmd.ProcessState.ExitCode()
+			processAlreadyExited = true
+			pm.logger.Info("process already exited during startup",
+				zap.Int("exit_code", exitCode),
+				zap.String("file", file),
+			)
+		}
+
 		// Process failed to start properly - clean up and return error
-		process.Stop()
+		if !processAlreadyExited {
+			// Process is still running but failed to bind socket in time
+			process.Stop()
+			// Get exit code after Stop() completes
+			exitCode = process.getExitCode()
+		}
+
 		delete(pm.processes, file)
+
 		return "", &ProcessStartupError{
 			Err:      fmt.Errorf("process startup failed: %w", err),
-			ExitCode: process.getExitCode(),
+			ExitCode: exitCode,
 			Stdout:   process.startupStdout.String(),
 			Stderr:   process.startupStderr.String(),
 			Command:  file,
 		}
 	}
-	return fmt.Sprintf("%s:%d", host, port), nil
+	return socketPath, nil
 }
 
 func (pm *ProcessManager) Stop() error {
@@ -298,22 +347,26 @@ func (pm *ProcessManager) removeProcess(command string) {
 
 func (pm *ProcessManager) closeProcessAfterRequest(file string) {
 	pm.mu.Lock()
-	defer pm.mu.Unlock()
+	process, exists := pm.processes[file]
+	if !exists {
+		pm.mu.Unlock()
+		return
+	}
 
-	if process, exists := pm.processes[file]; exists {
-		pm.logger.Info("closing process after request (idle_timeout = -1)",
-			zap.String("file", file),
-			zap.Int("pid", process.Cmd.Process.Pid),
-		)
+	process.mu.Lock()
+	process.activeRequests--
+	remaining := process.activeRequests
+	process.mu.Unlock()
 
-		if err := process.Stop(); err != nil {
-			pm.logger.Error("failed to stop process after request",
-				zap.String("file", file),
-				zap.Error(err),
-			)
-		}
-
+	// Remove from map immediately if last request
+	if remaining == 0 {
 		delete(pm.processes, file)
+	}
+	pm.mu.Unlock()
+
+	// Kill process outside the lock
+	if remaining == 0 {
+		process.Stop()
 	}
 }
 
@@ -351,7 +404,7 @@ func (p *Process) start() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	args := []string{p.Host, fmt.Sprintf("%d", p.Port)}
+	args := []string{p.SocketPath}
 	p.Cmd = exec.Command(p.Command, args...)
 	p.Cmd.Dir = filepath.Dir(p.Command)
 
@@ -365,7 +418,7 @@ func (p *Process) start() error {
 		zap.String("command", p.Command),
 		zap.Strings("args", args),
 		zap.String("working_dir", p.Cmd.Dir),
-		zap.String("host_port", fmt.Sprintf("%s:%d", p.Host, p.Port)),
+		zap.String("socket_path", p.SocketPath),
 		zap.Any("env", p.env),
 	)
 
@@ -396,7 +449,7 @@ func (p *Process) start() error {
 
 	p.logger.Debug("starting process command",
 		zap.String("command", p.Command),
-		zap.String("host_port", fmt.Sprintf("%s:%d", p.Host, p.Port)),
+		zap.String("socket_path", p.SocketPath),
 	)
 
 	if err := p.Cmd.Start(); err != nil {
@@ -418,7 +471,7 @@ func (p *Process) start() error {
 	p.logger.Info("process started successfully",
 		zap.String("command", p.Command),
 		zap.Int("pid", p.Cmd.Process.Pid),
-		zap.String("host_port", fmt.Sprintf("%s:%d", p.Host, p.Port)),
+		zap.String("socket_path", p.SocketPath),
 	)
 
 	go p.monitor()
@@ -484,17 +537,21 @@ func (p *Process) monitor() {
 		p.exitCode = 0
 	}
 
-	crashed := p.exitCode != 0
+	stopping := p.stopping
 	command := p.Command
+	exitCode := p.exitCode
 	p.mu.Unlock()
 
-	if crashed {
+	close(p.exitChan)
+
+	// Only log unexpected exits as errors
+	if exitCode != 0 && !stopping {
 		p.logger.Error("process crashed",
 			zap.String("command", command),
-			zap.Int("exit_code", p.exitCode),
+			zap.Int("exit_code", exitCode),
 			zap.Error(err),
 		)
-	} else {
+	} else if exitCode == 0 && !stopping {
 		p.logger.Info("process exited normally",
 			zap.String("command", command),
 		)
@@ -505,95 +562,61 @@ func (p *Process) monitor() {
 
 func (p *Process) Stop() error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	if p.Cmd == nil || p.Cmd.Process == nil {
+		p.mu.Unlock()
 		return nil
 	}
 
+	p.stopping = true
+	pid := p.Cmd.Process.Pid
+	exitChan := p.exitChan
+	p.mu.Unlock()
+
 	p.logger.Info("stopping process",
 		zap.String("command", p.Command),
-		zap.Int("pid", p.Cmd.Process.Pid),
+		zap.Int("pid", pid),
 	)
 
-	if err := p.Cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		return fmt.Errorf("failed to send SIGTERM: %w", err)
+	// Send SIGTERM
+	p.mu.Lock()
+	proc := p.Cmd.Process
+	p.mu.Unlock()
+
+	if proc != nil {
+		if err := proc.Signal(syscall.SIGTERM); err != nil {
+			return fmt.Errorf("failed to send SIGTERM: %w", err)
+		}
 	}
 
-	done := make(chan error, 1)
-	go func() {
-		done <- p.Cmd.Wait()
-	}()
-
+	// Wait for exit with timeout
 	select {
 	case <-time.After(10 * time.Second):
-		p.logger.Warn("process did not shut down gracefully, force killing",
+		p.logger.Warn("process did not exit, force killing",
 			zap.String("command", p.Command),
-			zap.Int("pid", p.Cmd.Process.Pid),
+			zap.Int("pid", pid),
 		)
-		if err := p.Cmd.Process.Kill(); err != nil {
-			return fmt.Errorf("failed to kill process: %w", err)
+		p.mu.Lock()
+		proc := p.Cmd.Process
+		p.mu.Unlock()
+		if proc != nil {
+			proc.Kill()
 		}
-		<-done
-	case err := <-done:
-		if err != nil && !isProcessAlreadyFinished(err) {
-			return fmt.Errorf("process exit error: %w", err)
-		}
+		<-exitChan
+	case <-exitChan:
 	}
 
+	// Clean up socket
+	os.Remove(p.SocketPath)
 	return nil
 }
 
-func isProcessAlreadyFinished(err error) bool {
-	if err == nil {
-		return true
-	}
 
-	if exitError, ok := err.(*exec.ExitError); ok {
-		return exitError.Exited()
-	}
-
-	errStr := err.Error()
-	if errStr == "signal: terminated" ||
-		errStr == "signal: killed" ||
-		errStr == "wait: no child processes" {
-		return true
-	}
-
-	return false
-}
-
-func getFreePort() (int, error) {
-	listener, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		return 0, fmt.Errorf("failed to find free port: %w", err)
-	}
-	defer listener.Close()
-
-	addr, ok := listener.Addr().(*net.TCPAddr)
-	if !ok {
-		return 0, fmt.Errorf("failed to get TCP address")
-	}
-
-	return addr.Port, nil
-}
-
-func (pm *ProcessManager) isPortInUse(host string, port int) bool {
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), 100*time.Millisecond)
-	if err != nil {
-		return false
-	}
-	conn.Close()
-	return true
-}
-
-func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.Duration, process *Process) error {
+func (pm *ProcessManager) waitForSocketReady(socketPath string, timeout time.Duration, process *Process) error {
 	deadline := time.Now().Add(timeout)
-	hostPort := fmt.Sprintf("%s:%d", host, port)
 	start := time.Now()
 
-	pm.logger.Info("waiting for port to become ready",
-		zap.String("host_port", hostPort),
+	pm.logger.Info("waiting for socket to become ready",
+		zap.String("socket_path", socketPath),
 		zap.Duration("timeout", timeout),
 		zap.String("command", process.Command),
 	)
@@ -605,46 +628,46 @@ func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.D
 	for {
 		// Simple timeout check at the start of each iteration
 		if time.Now().After(deadline) {
-			pm.logger.Error("timeout waiting for port to become ready",
-				zap.String("host_port", hostPort),
+			pm.logger.Error("timeout waiting for socket to become ready",
+				zap.String("socket_path", socketPath),
 				zap.Duration("timeout", timeout),
 				zap.Duration("elapsed", time.Since(start)),
 				zap.Int("attempts", attemptCount),
 				zap.String("command", process.Command),
 			)
-			return fmt.Errorf("timeout waiting for port %s to become ready after %v", hostPort, timeout)
+			return fmt.Errorf("timeout waiting for socket %s to become ready after %v", socketPath, timeout)
 		}
 
 		select {
 		case <-time.After(time.Until(deadline)):
-			pm.logger.Error("timeout waiting for port to become ready (select case)",
-				zap.String("host_port", hostPort),
+			pm.logger.Error("timeout waiting for socket to become ready (select case)",
+				zap.String("socket_path", socketPath),
 				zap.Duration("timeout", timeout),
 				zap.Duration("elapsed", time.Since(start)),
 				zap.Int("attempts", attemptCount),
 				zap.String("command", process.Command),
 			)
-			return fmt.Errorf("timeout waiting for port %s to become ready after %v", hostPort, timeout)
+			return fmt.Errorf("timeout waiting for socket %s to become ready after %v", socketPath, timeout)
 		case <-ticker.C:
 			attemptCount++
 
 			// Check if process is still alive before trying to connect
 			if process.Cmd.ProcessState != nil && process.Cmd.ProcessState.Exited() {
-				pm.logger.Error("process exited before port became ready",
-					zap.String("host_port", hostPort),
+				pm.logger.Error("process exited before socket became ready",
+					zap.String("socket_path", socketPath),
 					zap.Int("exit_code", process.Cmd.ProcessState.ExitCode()),
 					zap.String("command", process.Command),
 					zap.Int("attempts", attemptCount),
 				)
-				return fmt.Errorf("process exited before port became ready (exit code: %d)", process.Cmd.ProcessState.ExitCode())
+				return fmt.Errorf("process exited before socket became ready (exit code: %d)", process.Cmd.ProcessState.ExitCode())
 			}
 
-			conn, err := net.DialTimeout("tcp", hostPort, 500*time.Millisecond)
+			conn, err := net.DialTimeout("unix", socketPath, 500*time.Millisecond)
 			if err == nil {
 				conn.Close()
 				waitTime := time.Since(start)
-				pm.logger.Info("port became ready",
-					zap.String("host_port", hostPort),
+				pm.logger.Info("socket became ready",
+					zap.String("socket_path", socketPath),
 					zap.Duration("wait_time", waitTime),
 					zap.Int("attempts", attemptCount),
 					zap.String("command", process.Command),
@@ -656,8 +679,8 @@ func (pm *ProcessManager) waitForPortReady(host string, port int, timeout time.D
 
 			// Log connection failures more frequently for debugging
 			if attemptCount%50 == 0 {
-				pm.logger.Info("still waiting for port to become ready",
-					zap.String("host_port", hostPort),
+				pm.logger.Info("still waiting for socket to become ready",
+					zap.String("socket_path", socketPath),
 					zap.Duration("elapsed", time.Since(start)),
 					zap.Duration("remaining", time.Until(deadline)),
 					zap.Int("attempts", attemptCount),

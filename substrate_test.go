@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -29,26 +30,25 @@ func TestSubstrateTransport_GetOrStartProcess_Integration(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create a simple Deno script that starts an HTTP server
-	scriptContent := `#!/usr/bin/env -S deno run --allow-net
+	scriptContent := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
 // Simple HTTP server for testing substrate transport
 
-const [host, port] = Deno.args;
+const [socketPath] = Deno.args;
 
-if (!host || !port) {
-  console.error("Usage: test-server.js <host> <port>");
+if (!socketPath) {
+  console.error("Usage: test-server.js <socket-path>");
   Deno.exit(1);
 }
 
 const server = Deno.serve({
-  hostname: host,
-  port: parseInt(port)
+  path: socketPath,
 }, (req) => {
   return new Response("Hello from substrate process!", {
     headers: { "Content-Type": "text/plain" }
   });
 });
 
-console.log(` + "`Server running at http://${host}:${port}/`" + `);
+console.log(` + "`Server listening on Unix socket: ${socketPath}`" + `);
 
 // Graceful shutdown
 Deno.addSignalListener("SIGTERM", () => {
@@ -89,24 +89,30 @@ Deno.addSignalListener("SIGTERM", () => {
 
 	// Test getOrCreateHost directly
 	filePath := scriptPath
-	hostPort, err := transport.manager.getOrCreateHost(filePath)
+	socketPath, err := transport.manager.getOrCreateHost(filePath)
 	if err != nil {
 		t.Fatalf("getOrCreateHost failed: %v", err)
 	}
 
-	if hostPort == "" {
-		t.Fatal("Host:port should not be empty")
+	if socketPath == "" {
+		t.Fatal("Socket path should not be empty")
 	}
 
 	// Wait a moment for the server to start
 	time.Sleep(200 * time.Millisecond)
 
-	// Try to make an HTTP request to the started process (optional verification)
-	testURL := fmt.Sprintf("http://%s/", hostPort)
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(testURL)
+	// Try to make an HTTP request to the started process via Unix socket
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", socketPath)
+			},
+		},
+	}
+	resp, err := client.Get("http://localhost/")
 	if err != nil {
-		t.Logf("Could not connect to started process at %s: %v (this might be expected)", testURL, err)
+		t.Logf("Could not connect to started process at %s: %v (this might be expected)", socketPath, err)
 	} else {
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
@@ -145,19 +151,26 @@ func TestSymlinkExecution(t *testing.T) {
 	}
 
 	// Test getOrCreateHost with symlinked script
-	hostPort, err := transport.manager.getOrCreateHost(symlinkPath)
+	socketPath, err := transport.manager.getOrCreateHost(symlinkPath)
 	if err != nil {
-		t.Fatalf("Failed to get host:port for symlinked script: %v", err)
+		t.Fatalf("Failed to get socket path for symlinked script: %v", err)
 	}
 
-	if !strings.Contains(hostPort, "localhost:") {
-		t.Errorf("Expected host:port to contain localhost:, got %s", hostPort)
+	if socketPath == "" {
+		t.Error("Socket path should not be empty")
 	}
 
 	time.Sleep(200 * time.Millisecond)
 
-	// Make HTTP request to verify server is running and functioning correctly
-	resp, err := http.Get(fmt.Sprintf("http://%s/test", hostPort))
+	// Make HTTP request to verify server is running and functioning correctly via Unix socket
+	client := &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", socketPath)
+			},
+		},
+	}
+	resp, err := client.Get("http://localhost/test")
 	if err != nil {
 		t.Fatalf("Failed to connect to symlinked server: %v", err)
 	}
@@ -298,9 +311,9 @@ func TestIdleTimeoutZeroDisablesCleanup(t *testing.T) {
 	}
 
 	// Start process
-	hostPort, err := transport.manager.getOrCreateHost(scriptPath)
+	socketPath, err := transport.manager.getOrCreateHost(scriptPath)
 	if err != nil {
-		t.Fatalf("Failed to get host:port: %v", err)
+		t.Fatalf("Failed to get socket path: %v", err)
 	}
 
 	time.Sleep(200 * time.Millisecond)
@@ -326,8 +339,15 @@ func TestIdleTimeoutZeroDisablesCleanup(t *testing.T) {
 		t.Error("Process should still exist when idle_timeout=0 (cleanup disabled)")
 	}
 
-	// Verify we can still make requests
-	resp, err := http.Get(fmt.Sprintf("http://%s/test", hostPort))
+	// Verify we can still make requests via Unix socket
+	client := &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", socketPath)
+			},
+		},
+	}
+	resp, err := client.Get("http://localhost/test")
 	if err != nil {
 		t.Fatalf("Failed to connect to process: %v", err)
 	}
@@ -433,12 +453,11 @@ func TestEnvironmentVariables_Integration(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Deno script that returns environment variables
-	envServerScript := `#!/usr/bin/env -S deno run --allow-net --allow-env
-const [host, port] = Deno.args;
+	envServerScript := `#!/usr/bin/env -S deno run --allow-net --allow-env --allow-read --allow-write
+const [socketPath] = Deno.args;
 
 const server = Deno.serve({
-  hostname: host,
-  port: parseInt(port)
+  path: socketPath,
 }, (req) => {
   const testVar = Deno.env.get("TEST_VAR") || "not_set";
   const apiKey = Deno.env.get("API_KEY") || "not_set";
@@ -481,15 +500,22 @@ const server = Deno.serve({
 	defer transport.Cleanup()
 
 	// Start process
-	hostPort, err := transport.manager.getOrCreateHost(scriptPath)
+	socketPath, err := transport.manager.getOrCreateHost(scriptPath)
 	if err != nil {
-		t.Fatalf("Failed to get host:port: %v", err)
+		t.Fatalf("Failed to get socket path: %v", err)
 	}
 
 	time.Sleep(500 * time.Millisecond)
 
-	// Make request to get environment variables
-	resp, err := http.Get(fmt.Sprintf("http://%s/test", hostPort))
+	// Make request to get environment variables via Unix socket
+	client := &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", socketPath)
+			},
+		},
+	}
+	resp, err := client.Get("http://localhost/test")
 	if err != nil {
 		t.Fatalf("Failed to connect to env server: %v", err)
 	}

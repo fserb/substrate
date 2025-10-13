@@ -4,7 +4,7 @@ A Caddy module that adds a custom transport method for `reverse_proxy`, enabling
 
 ## Overview
 
-Substrate behaves like FastCGI but over HTTP - it executes requested files as separate processes and proxies HTTP traffic to them. Each file gets its own process with automatic lifecycle management.
+Substrate behaves like FastCGI but over HTTP - it executes requested files as separate processes and proxies HTTP traffic to them via Unix domain sockets. Each file gets its own process with automatic lifecycle management.
 
 ## Installation
 
@@ -35,12 +35,11 @@ reverse_proxy @js_files {
 
 2. Create an executable script (e.g., `hello.js`):
 ```javascript
-#!/usr/bin/env -S deno run --allow-net
-const [host, port] = Deno.args;
+#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
+const [socketPath] = Deno.args;
 
-Deno.serve({ 
-  hostname: host, 
-  port: parseInt(port) 
+Deno.serve({
+  path: socketPath
 }, (req) => {
   return new Response('Hello from Substrate!');
 });
@@ -61,32 +60,44 @@ curl http://localhost/hello.js
 ## How It Works
 
 1. **File Matching**: Caddy's file matcher identifies executable files
-2. **Process Creation**: Substrate executes the file with `host` and `port` arguments
-3. **Port Management**: Each file gets a unique port automatically assigned
-4. **Request Proxying**: HTTP requests are proxied to the running process
+2. **Process Creation**: Substrate executes the file with a Unix socket path argument
+3. **Socket Management**: Each file gets a unique Unix domain socket automatically assigned
+4. **Request Proxying**: HTTP requests are proxied to the running process via Unix socket
 5. **Lifecycle Management**: Processes are reused, restarted, and cleaned up automatically
 
 ## Process Contract
 
-Your executable receives two arguments:
-- `argv[1]`: Host to bind to (usually "localhost")
-- `argv[2]`: Port to listen on (unique per file)
+Your executable receives one argument:
+- `argv[1]`: Unix socket path to listen on (e.g., `/tmp/substrate-abc123.sock`)
 
 Example in various languages:
 
-**Deno/Node.js:**
+**Deno:**
 ```javascript
-#!/usr/bin/env -S deno run --allow-net
-const [host, port] = Deno.args;
-// Start HTTP server on host:port
+#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
+const [socketPath] = Deno.args;
+
+Deno.serve({ path: socketPath }, (req) => {
+  return new Response('Hello!');
+});
 ```
 
 **Python:**
 ```python
 #!/usr/bin/env python3
 import sys
-host, port = sys.argv[1], int(sys.argv[2])
-# Start HTTP server on host:port
+import socket
+import http.server
+import socketserver
+
+socket_path = sys.argv[1]
+
+class UnixHTTPServer(socketserver.UnixStreamServer):
+    def server_bind(self):
+        socketserver.UnixStreamServer.server_bind(self)
+
+with UnixHTTPServer(socket_path, http.server.SimpleHTTPRequestHandler) as httpd:
+    httpd.serve_forever()
 ```
 
 **Go:**
@@ -94,11 +105,12 @@ host, port = sys.argv[1], int(sys.argv[2])
 //go:build ignore
 
 package main
-import ("fmt"; "net/http"; "os")
+import ("net"; "net/http"; "os")
 
 func main() {
-    host, port := os.Args[1], os.Args[2]
-    http.ListenAndServe(host+":"+port, handler)
+    socketPath := os.Args[1]
+    listener, _ := net.Listen("unix", socketPath)
+    http.Serve(listener, handler)
 }
 ```
 
@@ -130,13 +142,13 @@ reverse_proxy @scripts {
 
 ## Features
 
-- **Zero Configuration**: Processes just need to listen on the provided port
-- **Automatic Port Management**: No port conflicts or manual assignment
+- **Zero Configuration**: Processes just need to listen on the provided Unix socket
+- **Automatic Socket Management**: Each process gets a unique Unix domain socket
 - **Process Reuse**: Same file requests share the same process
 - **Hot Reloading**: File changes restart the associated process
 - **Concurrent Safe**: Multiple requests handled properly
-- **Resource Cleanup**: Idle processes automatically terminated
-- **Security**: Executable validation and privilege dropping when running as root
+- **Resource Cleanup**: Idle processes and socket files automatically cleaned up
+- **Security**: Executable validation, Unix socket isolation, and privilege dropping when running as root
 - **Advanced Routing**: URL rewriting, subpath matching, and pattern-based routing
 
 ## Development
