@@ -413,6 +413,8 @@ func (p *Process) start() error {
 	for key, value := range p.env {
 		p.Cmd.Env = append(p.Cmd.Env, fmt.Sprintf("%s=%s", key, value))
 	}
+	// Add SUBSTRATE=true to indicate the process is running in substrate
+	p.Cmd.Env = append(p.Cmd.Env, "SUBSTRATE=true")
 
 	p.logger.Debug("configuring process command",
 		zap.String("command", p.Command),

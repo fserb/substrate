@@ -248,3 +248,67 @@ Deno.serve({path: socketPath}, (req) => {
 		t.Errorf("CUSTOM_VAR should be 'not_set', got %q", customVar)
 	}
 }
+
+func TestSubstrateEnvironmentVariable(t *testing.T) {
+	// Test that SUBSTRATE=true is always set in subprocess
+	serverBlock := `@js_files {
+		path *.js
+		file {path}
+	}
+
+	reverse_proxy @js_files {
+		transport substrate
+		to localhost
+	}`
+
+	substrateServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write --allow-env --allow-read
+const [socketPath] = Deno.args;
+
+Deno.serve({path: socketPath}, (req) => {
+	const substrateValue = Deno.env.get("SUBSTRATE") || "not_set";
+
+	return new Response(JSON.stringify({
+		substrate: substrateValue,
+		is_substrate_process: substrateValue === "true"
+	}), {
+		headers: { "Content-Type": "application/json" }
+	});
+});`
+
+	files := []TestFile{
+		{Path: "substrate-check.js", Content: substrateServer, Mode: 0755},
+	}
+
+	ctx := RunE2ETest(t, serverBlock, files)
+
+	resp, err := http.Get(ctx.BaseURL + "/substrate-check.js")
+	if err != nil {
+		t.Fatalf("Failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+	body := string(bodyBytes)
+
+	var response map[string]interface{}
+	if err := json.Unmarshal([]byte(body), &response); err != nil {
+		t.Fatalf("Failed to parse JSON response: %v", err)
+	}
+
+	// Verify SUBSTRATE env var is set to "true"
+	if substrate, ok := response["substrate"].(string); !ok || substrate != "true" {
+		t.Errorf("SUBSTRATE should be 'true', got %q", substrate)
+	}
+
+	// Verify boolean check
+	if isSubstrate, ok := response["is_substrate_process"].(bool); !ok || !isSubstrate {
+		t.Error("Process should be identified as substrate process")
+	}
+}
