@@ -5,16 +5,6 @@ import (
 )
 
 func TestSimpleSubstrateRequest(t *testing.T) {
-	serverBlock := `@js_files {
-		path *.js
-		file {path}
-	}
-
-	reverse_proxy @js_files {
-		transport substrate
-		to localhost
-	}`
-
 	jsServer := `Deno.serve({path: Deno.args[0]}, (req) => {
 	const url = new URL(req.url);
 	return new Response("Hello from substrate process!\nPath: " + url.pathname, {
@@ -26,7 +16,7 @@ func TestSimpleSubstrateRequest(t *testing.T) {
 		{Path: "hello.js", Content: jsServer, Mode: 0755},
 	}
 
-	ctx := RunE2ETest(t, serverBlock, files)
+	ctx := RunE2ETest(t, StandardServerBlock(), files)
 
 	ctx.AssertGet("/hello.js", "Hello from substrate process!\nPath: /hello.js")
 }

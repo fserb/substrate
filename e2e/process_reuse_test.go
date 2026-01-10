@@ -7,16 +7,6 @@ import (
 )
 
 func TestProcessReusesForMultipleRequests(t *testing.T) {
-	serverBlock := `@js_files {
-		path *.js
-		file {path}
-	}
-
-	reverse_proxy @js_files {
-		transport substrate
-		to localhost
-	}`
-
 	counterServer := `let count = 0;
 Deno.serve({path: Deno.args[0]}, (req) => {
 	count++;
@@ -27,7 +17,7 @@ Deno.serve({path: Deno.args[0]}, (req) => {
 		{Path: "counter.js", Content: counterServer, Mode: 0755},
 	}
 
-	ctx := RunE2ETest(t, serverBlock, files)
+	ctx := RunE2ETest(t, StandardServerBlock(), files)
 
 	ctx.AssertGet("/counter.js", "Request #1")
 
@@ -42,16 +32,6 @@ Deno.serve({path: Deno.args[0]}, (req) => {
 }
 
 func TestDifferentFilesGetDifferentProcesses(t *testing.T) {
-	serverBlock := `@js_files {
-		path *.js
-		file {path}
-	}
-
-	reverse_proxy @js_files {
-		transport substrate
-		to localhost
-	}`
-
 	serverTemplate := `const filename = "%s";
 let count = 0;
 Deno.serve({path: Deno.args[0]}, (req) => {
@@ -64,7 +44,7 @@ Deno.serve({path: Deno.args[0]}, (req) => {
 		{Path: "server2.js", Content: fmt.Sprintf(serverTemplate, "server2"), Mode: 0755},
 	}
 
-	ctx := RunE2ETest(t, serverBlock, files)
+	ctx := RunE2ETest(t, StandardServerBlock(), files)
 
 	ctx.AssertGet("/server1.js", "server1 request #1")
 	ctx.AssertGet("/server2.js", "server2 request #1")

@@ -6,12 +6,50 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddytest"
 	_ "github.com/fserb/substrate"
 )
+
+// SubstrateConfig holds optional configuration for the substrate transport.
+type SubstrateConfig struct {
+	IdleTimeout    string // e.g., "5m", "0", "-1"
+	StartupTimeout string // e.g., "30s"
+}
+
+// StandardServerBlock returns the default server block for substrate tests.
+// It matches *.js files and routes them through the substrate transport.
+func StandardServerBlock() string {
+	return ServerBlockWithConfig(SubstrateConfig{})
+}
+
+// ServerBlockWithConfig returns a server block with the specified substrate configuration.
+func ServerBlockWithConfig(cfg SubstrateConfig) string {
+	var transportConfig string
+	if cfg.IdleTimeout != "" || cfg.StartupTimeout != "" {
+		var opts []string
+		if cfg.IdleTimeout != "" {
+			opts = append(opts, fmt.Sprintf("idle_timeout %s", cfg.IdleTimeout))
+		}
+		if cfg.StartupTimeout != "" {
+			opts = append(opts, fmt.Sprintf("startup_timeout %s", cfg.StartupTimeout))
+		}
+		transportConfig = fmt.Sprintf(" {\n\t\t\t%s\n\t\t}", strings.Join(opts, "\n\t\t\t"))
+	}
+
+	return fmt.Sprintf(`@js_files {
+	path *.js
+	file {path}
+}
+
+reverse_proxy @js_files {
+	transport substrate%s
+	to localhost
+}`, transportConfig)
+}
 
 type TestFile struct {
 	Path    string
@@ -130,4 +168,3 @@ func getFreePort() (int, error) {
 
 	return addr.Port, nil
 }
-

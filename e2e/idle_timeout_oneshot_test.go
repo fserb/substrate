@@ -6,18 +6,6 @@ import (
 )
 
 func TestIdleTimeoutOneShotMode(t *testing.T) {
-	serverBlock := `@js_files {
-		path *.js
-		file {path}
-	}
-
-	reverse_proxy @js_files {
-		transport substrate {
-			idle_timeout -1
-		}
-		to localhost
-	}`
-
 	// Server with a local counter that increments with each request
 	jsServer := `const [socketPath] = Deno.args;
 
@@ -36,7 +24,7 @@ Deno.serve({
 		{Path: "counter.js", Content: jsServer, Mode: 0755},
 	}
 
-	ctx := RunE2ETest(t, serverBlock, files)
+	ctx := RunE2ETest(t, ServerBlockWithConfig(SubstrateConfig{IdleTimeout: "-1"}), files)
 
 	// First request should return "Count: 1"
 	ctx.AssertGet("/counter.js", "Count: 1")

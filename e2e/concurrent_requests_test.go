@@ -8,16 +8,6 @@ import (
 )
 
 func TestConcurrentRequestsToSameProcess(t *testing.T) {
-	serverBlock := `@js_files {
-		path *.js
-		file {path}
-	}
-
-	reverse_proxy @js_files {
-		transport substrate
-		to localhost
-	}`
-
 	concurrentServer := `let requestCount = 0;
 
 Deno.serve({path: Deno.args[0]}, async (req) => {
@@ -30,7 +20,7 @@ Deno.serve({path: Deno.args[0]}, async (req) => {
 		{Path: "concurrent.js", Content: concurrentServer, Mode: 0755},
 	}
 
-	ctx := RunE2ETest(t, serverBlock, files)
+	ctx := RunE2ETest(t, StandardServerBlock(), files)
 
 	const numRequests = 3
 	var wg sync.WaitGroup
@@ -81,16 +71,6 @@ Deno.serve({path: Deno.args[0]}, async (req) => {
 }
 
 func TestConcurrentRequestsToDifferentProcesses(t *testing.T) {
-	serverBlock := `@js_files {
-		path *.js
-		file {path}
-	}
-
-	reverse_proxy @js_files {
-		transport substrate
-		to localhost
-	}`
-
 	serverTemplate := `const serverName = "%s";
 let requestCount = 0;
 
@@ -106,7 +86,7 @@ Deno.serve({path: Deno.args[0]}, async (req) => {
 		{Path: "server_c.js", Content: fmt.Sprintf(serverTemplate, "ServerC"), Mode: 0755},
 	}
 
-	ctx := RunE2ETest(t, serverBlock, files)
+	ctx := RunE2ETest(t, StandardServerBlock(), files)
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -159,16 +139,6 @@ Deno.serve({path: Deno.args[0]}, async (req) => {
 }
 
 func TestHighConcurrencyToSingleProcess(t *testing.T) {
-	serverBlock := `@js_files {
-		path *.js
-		file {path}
-	}
-
-	reverse_proxy @js_files {
-		transport substrate
-		to localhost
-	}`
-
 	highConcurrencyServer := `let totalRequests = 0;
 
 Deno.serve({path: Deno.args[0]}, async (req) => {
@@ -181,7 +151,7 @@ Deno.serve({path: Deno.args[0]}, async (req) => {
 		{Path: "high_concurrency.js", Content: highConcurrencyServer, Mode: 0755},
 	}
 
-	ctx := RunE2ETest(t, serverBlock, files)
+	ctx := RunE2ETest(t, StandardServerBlock(), files)
 
 	const numRequests = 8
 	var wg sync.WaitGroup

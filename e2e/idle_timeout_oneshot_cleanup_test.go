@@ -9,18 +9,6 @@ import (
 )
 
 func TestOneShotProcessCleanup(t *testing.T) {
-	serverBlock := `@js_files {
-		path *.js
-		file {path}
-	}
-
-	reverse_proxy @js_files {
-		transport substrate {
-			idle_timeout -1
-		}
-		to localhost
-	}`
-
 	// Server that logs its PID so we can track it
 	jsServer := `const [socketPath] = Deno.args;
 
@@ -36,7 +24,7 @@ Deno.serve({
 		{Path: "server.js", Content: jsServer, Mode: 0755},
 	}
 
-	ctx := RunE2ETest(t, serverBlock, files)
+	ctx := RunE2ETest(t, ServerBlockWithConfig(SubstrateConfig{IdleTimeout: "-1"}), files)
 
 	// First request
 	resp1, err := ctx.Tester.Client.Get(ctx.BaseURL + "/server.js")
