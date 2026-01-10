@@ -69,7 +69,7 @@ ProcessManager needs access to DenoManager (created during Provision).
 ---
 
 ### 3. File validation accepts .js files without executable check
-status: pending
+status: done
 depends: 2
 priority: 0
 files: process.go, process_security.go

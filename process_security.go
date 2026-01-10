@@ -6,18 +6,12 @@ import (
 	"os/exec"
 	"os/user"
 	"syscall"
-
-	"golang.org/x/sys/unix"
 )
 
-// configureProcessSecurity sets up process security by checking executable permissions
-// and dropping privileges to match the file owner's user and group when running as root
+// configureProcessSecurity sets up process security by dropping privileges
+// to match the file owner's user and group when running as root.
+// Note: Executable permission check is not needed since we run files via deno.
 func configureProcessSecurity(cmd *exec.Cmd, filePath string) error {
-	// Always check if file is executable, regardless of current user
-	if err := unix.Access(filePath, unix.X_OK); err != nil {
-		return fmt.Errorf("file %s is not executable: %w", filePath, err)
-	}
-
 	currentUser, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)

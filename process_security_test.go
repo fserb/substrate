@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -36,26 +35,24 @@ func TestConfigureProcessSecurity_NonRoot(t *testing.T) {
 }
 
 func TestConfigureProcessSecurity_NonExecutableFile(t *testing.T) {
-	// Test that non-executable files are rejected regardless of user
+	// Since we run scripts via deno, executable permission is not required
+	// configureProcessSecurity should pass for non-executable files
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "non_executable.txt")
 
 	// Create a non-executable file (mode 0644)
-	scriptContent := "#!/bin/bash\necho 'hello world'\n"
+	scriptContent := "// JavaScript content\nconsole.log('hello world');\n"
 	err := os.WriteFile(scriptPath, []byte(scriptContent), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
-	cmd := exec.Command(scriptPath)
+	cmd := exec.Command("deno", "run", scriptPath)
 	err = configureProcessSecurity(cmd, scriptPath)
 
-	if err == nil {
-		t.Errorf("Expected error for non-executable file, but got none")
-	}
-
-	if err != nil && !strings.Contains(err.Error(), "not executable") {
-		t.Errorf("Expected error to mention 'not executable', got: %v", err)
+	// Should not return an error - executable check was removed
+	if err != nil {
+		t.Errorf("Expected no error for non-executable file (deno runs it), got: %v", err)
 	}
 }
 
@@ -80,19 +77,25 @@ func TestConfigureProcessSecurity_ExecutableFile(t *testing.T) {
 }
 
 func TestConfigureProcessSecurity_NonExistentFile(t *testing.T) {
-	// Test that non-existent files are handled properly
+	// When not running as root, configureProcessSecurity returns early without checking file
+	// So non-existent files only fail when running as root
+	if os.Getuid() != 0 {
+		t.Skip("Test only relevant when running as root")
+	}
+
 	nonExistentPath := "/path/that/does/not/exist"
 
 	cmd := exec.Command(nonExistentPath)
 	err := configureProcessSecurity(cmd, nonExistentPath)
 
 	if err == nil {
-		t.Errorf("Expected error for non-existent file, but got none")
+		t.Errorf("Expected error for non-existent file when running as root, but got none")
 	}
 }
 
 func TestConfigureProcessSecurity_Symlink(t *testing.T) {
-	// Test that symlinks to executable files are handled correctly
+	// Test that symlinks to files are handled correctly
+	// Executable permission is no longer checked
 	tmpDir := t.TempDir()
 
 	// Create an executable file
@@ -117,7 +120,7 @@ func TestConfigureProcessSecurity_Symlink(t *testing.T) {
 		t.Errorf("Unexpected error for symlinked executable file: %v", err)
 	}
 
-	// Test symlink to non-executable file
+	// Test symlink to non-executable file - should now pass since we don't check executable
 	nonExecFile := filepath.Join(tmpDir, "non_exec.txt")
 	err = os.WriteFile(nonExecFile, []byte("content"), 0644)
 	if err != nil {
@@ -130,14 +133,11 @@ func TestConfigureProcessSecurity_Symlink(t *testing.T) {
 		t.Fatalf("Failed to create symlink to non-executable: %v", err)
 	}
 
-	cmd2 := exec.Command(nonExecSymlink)
+	cmd2 := exec.Command("deno", "run", nonExecSymlink)
 	err = configureProcessSecurity(cmd2, nonExecSymlink)
 
-	if err == nil {
-		t.Errorf("Expected error for symlink to non-executable file, but got none")
-	}
-
-	if err != nil && !strings.Contains(err.Error(), "not executable") {
-		t.Errorf("Expected error to mention 'not executable', got: %v", err)
+	// Should not return an error - executable check was removed
+	if err != nil {
+		t.Errorf("Expected no error for symlink to non-executable file (deno runs it), got: %v", err)
 	}
 }
