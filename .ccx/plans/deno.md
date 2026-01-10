@@ -318,7 +318,7 @@ Search for comments that reference the old execution model and update or remove:
 ---
 
 ### 20. Simplify process_security_test.go
-status: pending
+status: done
 depends: 5
 priority: 2
 files: process_security_test.go
@@ -359,3 +359,4 @@ Symlink handling was important when checking executable permissions (symlink tar
 - 2026-01-10: Renamed Process.Command to Process.ScriptPath for clarity since it now represents a JS script path rather than an executable. Also renamed ProcessStartupError.Command to ScriptPath and updated all log messages from 'command' to 'script_path'. Updated variable names in ProcessManager functions (removeProcess, cleanupIdleProcesses, Stop) to use scriptPath instead of command.
 - 2026-01-10: Removed Mode: 0755 from all e2e test files (36 occurrences across 15 test files). Files now use the default mode (0644) since Deno doesn't require executable permission. Simplified non_executable_test.go by consolidating three tests into two (removed redundant 0755 and 0644 tests, kept only default and 0444 readonly). All tests pass.
 - 2026-01-10: Fixed TestProcessOutputWithCrash to use .js extension instead of .sh for JavaScript content. Also updated to use ServerBlockWithConfig() helper for consistency with other tests.
+- 2026-01-10: Updated CLAUDE.md to reflect Deno execution model: changed architecture description to Deno-based Script Execution, added deno.go to project structure, updated Example Process Flow to show deno run command, rewrote Process Protocol section (removed shebang example, clarified scripts don't need executable permissions, explained Deno runtime auto-download), updated testing sections (embedded Deno runtime instead of system Deno), changed Key Design Decisions to mention Deno-based Execution and No Executable Check, added DenoManager to Core Components, removed Python file example from Caddyfile config, added note that substrate exclusively runs JavaScript via Deno
