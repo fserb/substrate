@@ -199,7 +199,7 @@ files: e2e/non_executable_test.go
 ---
 
 ### 12. Merge process output tests
-status: pending
+status: done
 depends: 5
 priority: 2
 files: e2e/process_output_test.go
@@ -353,3 +353,4 @@ Symlink handling was important when checking executable permissions (symlink tar
 - 2026-01-10: Merged internal_ip_error_test.go into error_scenarios_test.go. Added TestDetailedErrorForInternalIP and TestProcessStartupTimeoutWithDetailedError tests. Deleted the old file.
 - 2026-01-10: Reviewed privilege dropping for Deno execution. Confirmed current approach (script owner controls execution) is reasonable. Added explicit Security Model section to CLAUDE.md documenting: privilege dropping behavior, security properties, configuration considerations, and rationale for script-owner approach vs dedicated user. Also updated process_security.go comment with detailed security model documentation.
 - 2026-01-10: Consolidated concurrent tests - merged TestConcurrentRequestsToSameProcess and TestHighConcurrencyToSingleProcess into a single test with 8 concurrent requests. Removed Mode: 0755 from test files since it's no longer needed with Deno execution.
+- 2026-01-10: Combined TestNonExecutableFilesWork and TestReadOnlyFileWorks into single TestFilePermissionsDontMatter test that verifies 0755, 0644, and 0444 file permissions all work via Deno. Updated to use StandardServerBlock() helper.
