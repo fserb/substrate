@@ -276,7 +276,7 @@ All e2e tests set `Mode: 0755` on JS files, but this is now unnecessary since De
 ---
 
 ### 17. Fix process_output_test.go .sh extension
-status: pending
+status: done
 depends: 5
 priority: 2
 files: e2e/process_output_test.go
@@ -357,3 +357,4 @@ Symlink handling was important when checking executable permissions (symlink tar
 - 2026-01-10: Merged TestProcessStdoutLogging and TestProcessStderrLogging into single TestProcessOutputLogging test. Updated to use ServerBlockWithConfig() helper and removed Mode: 0755. The combined test exercises both stdout and stderr logging by using console.log and console.error in the test script.
 - 2026-01-10: Added GetBody(path) helper to E2ETestContext that returns body string and status code. Updated idle_timeout_test.go to use the new helper, removing direct io.ReadAll usage.
 - 2026-01-10: Renamed Process.Command to Process.ScriptPath for clarity since it now represents a JS script path rather than an executable. Also renamed ProcessStartupError.Command to ScriptPath and updated all log messages from 'command' to 'script_path'. Updated variable names in ProcessManager functions (removeProcess, cleanupIdleProcesses, Stop) to use scriptPath instead of command.
+- 2026-01-10: Removed Mode: 0755 from all e2e test files (36 occurrences across 15 test files). Files now use the default mode (0644) since Deno doesn't require executable permission. Simplified non_executable_test.go by consolidating three tests into two (removed redundant 0755 and 0644 tests, kept only default and 0444 readonly). All tests pass.

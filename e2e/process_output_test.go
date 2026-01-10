@@ -54,22 +54,14 @@ Deno.addSignalListener("SIGTERM", () => {
 }
 
 func TestProcessOutputWithCrash(t *testing.T) {
-	serverBlock := `@crash_files {
-		path *.sh
-		file {path}
-	}
-
-	reverse_proxy @crash_files {
-		transport substrate {
-			idle_timeout 1m
-			startup_timeout 5s
-		}
-		to localhost
-	}`
+	serverBlock := ServerBlockWithConfig(SubstrateConfig{
+		IdleTimeout:    "1m",
+		StartupTimeout: "5s",
+	})
 
 	files := []TestFile{
 		{
-			Path: "crash_test.sh",
+			Path: "crash_test.js",
 			Content: `const [socketPath] = Deno.args;
 
 console.log("Starting crash test server on " + socketPath);
@@ -99,11 +91,11 @@ Deno.serve({path: socketPath}, (req) => {
 	ctx := RunE2ETest(t, serverBlock, files)
 
 	// Make a request that should cause the process to crash
-	ctx.AssertGet("/crash_test.sh", "Response before crash")
+	ctx.AssertGet("/crash_test.js", "Response before crash")
 
 	// Give time for crash logging
 	time.Sleep(200 * time.Millisecond)
 
 	// Second request should create a new process
-	ctx.AssertGet("/crash_test.sh", "Response before crash")
+	ctx.AssertGet("/crash_test.js", "Response before crash")
 }
