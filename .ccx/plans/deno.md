@@ -149,7 +149,7 @@ serverBlock := ServerBlockWithConfig(SubstrateConfig{IdleTimeout: "-1"})
 ---
 
 ### 7. Merge one-shot idle timeout tests
-status: pending
+status: done
 depends: 5
 priority: 1
 files: e2e/idle_timeout_oneshot_test.go, e2e/idle_timeout_oneshot_cleanup_test.go
@@ -347,3 +347,4 @@ Symlink handling was important when checking executable permissions (symlink tar
 
 - 2026-01-10: Plan created
 - 2026-01-10: Aligned deno.go with pop's tested implementation: file-based zip extraction, simpler validation, proper cache path structure
+- 2026-01-10: Added StandardServerBlock() and ServerBlockWithConfig(SubstrateConfig) helpers to e2e/testutil.go. Updated simple_test.go, process_reuse_test.go, concurrent_requests_test.go, idle_timeout_oneshot_test.go, and idle_timeout_oneshot_cleanup_test.go to use the new helpers instead of duplicating server block patterns.
