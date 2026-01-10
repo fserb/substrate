@@ -336,7 +336,7 @@ fileContent := "test content"
 ---
 
 ### 21. Consider removing symlink-specific tests
-status: pending
+status: done
 depends: 5
 priority: 3
 files: e2e/working_directory_test.go, process_security_test.go
@@ -361,3 +361,4 @@ Symlink handling was important when checking executable permissions (symlink tar
 - 2026-01-10: Fixed TestProcessOutputWithCrash to use .js extension instead of .sh for JavaScript content. Also updated to use ServerBlockWithConfig() helper for consistency with other tests.
 - 2026-01-10: Updated CLAUDE.md to reflect Deno execution model: changed architecture description to Deno-based Script Execution, added deno.go to project structure, updated Example Process Flow to show deno run command, rewrote Process Protocol section (removed shebang example, clarified scripts don't need executable permissions, explained Deno runtime auto-download), updated testing sections (embedded Deno runtime instead of system Deno), changed Key Design Decisions to mention Deno-based Execution and No Executable Check, added DenoManager to Core Components, removed Python file example from Caddyfile config, added note that substrate exclusively runs JavaScript via Deno
 - 2026-01-10: Simplified process_security_test.go: removed shell script shebangs and replaced with plain text files. Merged TestConfigureProcessSecurity_NonExecutableFile and TestConfigureProcessSecurity_ExecutableFile into single TestConfigureProcessSecurity_FilePermissions using table-driven tests for 0644, 0444, and 0755 modes. Simplified TestConfigureProcessSecurity_Symlink to use plain .js files. Changed all .sh extensions to .js. All tests pass.
+- 2026-01-10: Updated process_test.go to remove references to the old direct execution model: changed .sh extensions to .js, replaced shebang content with plain JavaScript, updated comments from 'executable' to 'script/file', and clarified that Deno handles execution (not the OS). All tests pass.

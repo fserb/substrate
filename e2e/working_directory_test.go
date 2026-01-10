@@ -63,6 +63,10 @@ func TestNestedDirectoryWorkingDirectory(t *testing.T) {
 }
 
 func TestWorkingDirectoryWithSymlink(t *testing.T) {
+	// Test that when accessing a script via symlink, the working directory
+	// is set to the symlink's directory, not the original file's directory.
+	// This is important for relative path resolution - a script accessed at
+	// /sub/symlink.js should have cwd=/sub/, not where the target lives.
 	serverBlock := `@js_files {
 		path *.js
 		file {path}

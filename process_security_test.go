@@ -86,8 +86,9 @@ func TestConfigureProcessSecurity_NonExistentFile(t *testing.T) {
 }
 
 func TestConfigureProcessSecurity_Symlink(t *testing.T) {
-	// Test that symlinks to files are handled correctly
-	// Symlinks are transparent since Deno just reads whatever the path resolves to
+	// Test that symlinks are handled correctly for privilege dropping.
+	// When running as root, we stat the symlink (which follows to the target)
+	// to get the file owner for privilege dropping.
 	tmpDir := t.TempDir()
 
 	// Create a plain text file
