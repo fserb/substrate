@@ -48,7 +48,7 @@ DenoManager should:
 ---
 
 ### 2. Process starts scripts via deno run
-status: pending
+status: done
 depends: 1
 priority: 0
 files: process.go
@@ -122,3 +122,4 @@ Run `./task test` and ensure all unit/integration tests pass with the new Deno e
 ## Notes
 
 - 2026-01-10: Plan created
+- 2026-01-10: Aligned deno.go with pop's tested implementation: file-based zip extraction, simpler validation, proper cache path structure

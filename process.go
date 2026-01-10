@@ -32,11 +32,13 @@ type ProcessManager struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	wg             sync.WaitGroup
+	deno           *DenoManager
 }
 
 type Process struct {
 	Command    string
 	SocketPath string
+	DenoPath   string // Path to the deno binary
 	Cmd        *exec.Cmd
 	LastUsed   time.Time
 	exitCode   int
@@ -66,7 +68,7 @@ func (e *ProcessStartupError) Error() string {
 	return e.Err.Error()
 }
 
-func NewProcessManager(idleTimeout, startupTimeout caddy.Duration, env map[string]string, logger *zap.Logger) (*ProcessManager, error) {
+func NewProcessManager(idleTimeout, startupTimeout caddy.Duration, env map[string]string, deno *DenoManager, logger *zap.Logger) (*ProcessManager, error) {
 	logger.Info("creating new process manager",
 		zap.Duration("idle_timeout", time.Duration(idleTimeout)),
 		zap.Duration("startup_timeout", time.Duration(startupTimeout)),
@@ -83,6 +85,7 @@ func NewProcessManager(idleTimeout, startupTimeout caddy.Duration, env map[strin
 		processes:      make(map[string]*Process),
 		ctx:            ctx,
 		cancel:         cancel,
+		deno:           deno,
 	}
 
 	if idleTimeout > 0 {
@@ -182,6 +185,16 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 		zap.String("file", file),
 	)
 
+	// Get deno binary path
+	denoPath, err := pm.deno.Get()
+	if err != nil {
+		pm.logger.Error("failed to get deno binary",
+			zap.String("file", file),
+			zap.Error(err),
+		)
+		return "", fmt.Errorf("failed to get deno binary: %w", err)
+	}
+
 	socketPath, err := getSocketPath()
 	if err != nil {
 		pm.logger.Error("failed to generate socket path",
@@ -199,6 +212,7 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 	process := &Process{
 		Command:        file,
 		SocketPath:     socketPath,
+		DenoPath:       denoPath,
 		LastUsed:       time.Now(),
 		onExit:         func() { pm.removeProcess(file) },
 		logger:         pm.logger,
@@ -404,8 +418,9 @@ func (p *Process) start() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	args := []string{p.SocketPath}
-	p.Cmd = exec.Command(p.Command, args...)
+	// Run script via deno: deno run --allow-all script.js socketPath
+	args := []string{"run", "--allow-all", p.Command, p.SocketPath}
+	p.Cmd = exec.Command(p.DenoPath, args...)
 	p.Cmd.Dir = filepath.Dir(p.Command)
 
 	// Set up environment variables
@@ -611,7 +626,6 @@ func (p *Process) Stop() error {
 	os.Remove(p.SocketPath)
 	return nil
 }
-
 
 func (pm *ProcessManager) waitForSocketReady(socketPath string, timeout time.Duration, process *Process) error {
 	deadline := time.Now().Add(timeout)

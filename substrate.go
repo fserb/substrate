@@ -27,6 +27,7 @@ type SubstrateTransport struct {
 	ctx       caddy.Context
 	transport http.RoundTripper
 	manager   *ProcessManager
+	deno      *DenoManager
 	logger    *zap.Logger
 }
 
@@ -77,7 +78,11 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 	t.transport = httpTransport
 	t.logger.Debug("HTTP transport provisioned successfully")
 
-	manager, err := NewProcessManager(t.IdleTimeout, t.StartupTimeout, t.Env, t.logger)
+	// Create Deno manager for downloading/caching the Deno runtime
+	t.deno = NewDenoManager(t.logger)
+	t.logger.Debug("deno manager created successfully")
+
+	manager, err := NewProcessManager(t.IdleTimeout, t.StartupTimeout, t.Env, t.deno, t.logger)
 	if err != nil {
 		t.logger.Error("failed to create process manager", zap.Error(err))
 		return fmt.Errorf("failed to create process manager: %w", err)
