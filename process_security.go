@@ -10,7 +10,14 @@ import (
 
 // configureProcessSecurity sets up process security by dropping privileges
 // to match the file owner's user and group when running as root.
-// Note: Executable permission check is not needed since we run files via deno.
+//
+// Security model:
+//   - When running as root and script is owned by non-root user: drop to script owner
+//   - When running as root and script is owned by root: no drop (runs as root)
+//   - When not running as root: no changes (runs as current user)
+//
+// This implements "your script runs as you" - file ownership controls execution privileges.
+// No executable permission check is needed since scripts run via Deno.
 func configureProcessSecurity(cmd *exec.Cmd, filePath string) error {
 	currentUser, err := user.Current()
 	if err != nil {
