@@ -25,7 +25,7 @@ func TestProcessWorkingDirectory(t *testing.T) {
 });`
 
 	files := []TestFile{
-		{Path: "cwd_test.js", Content: cwdServer, Mode: 0755},
+		{Path: "cwd_test.js", Content: cwdServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -54,8 +54,8 @@ func TestNestedDirectoryWorkingDirectory(t *testing.T) {
 	dataContent := "Hello from nested directory"
 
 	files := []TestFile{
-		{Path: "nested/server.js", Content: relativeReadServer, Mode: 0755},
-		{Path: "nested/data.txt", Content: dataContent, Mode: 0644},
+		{Path: "nested/server.js", Content: relativeReadServer},
+		{Path: "nested/data.txt", Content: dataContent},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -80,7 +80,7 @@ func TestWorkingDirectoryWithSymlink(t *testing.T) {
 });`
 
 	files := []TestFile{
-		{Path: "actual_server.js", Content: cwdServer, Mode: 0755},
+		{Path: "actual_server.js", Content: cwdServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -96,4 +96,3 @@ func TestWorkingDirectoryWithSymlink(t *testing.T) {
 	ctx.AssertGet("/actual_server.js", expectedDir)
 	ctx.AssertGet("/sub/symlink_server.js", expectedDir+"/sub")
 }
-

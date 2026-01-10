@@ -93,7 +93,6 @@ Deno.serve({path: socketPath}, (req) => {
 	return new Response("Response before crash");
 });
 `,
-			Mode: 0755,
 		},
 	}
 
@@ -108,4 +107,3 @@ Deno.serve({path: socketPath}, (req) => {
 	// Second request should create a new process
 	ctx.AssertGet("/crash_test.sh", "Response before crash")
 }
-

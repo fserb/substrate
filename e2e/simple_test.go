@@ -13,7 +13,7 @@ func TestSimpleSubstrateRequest(t *testing.T) {
 });`
 
 	files := []TestFile{
-		{Path: "hello.js", Content: jsServer, Mode: 0755},
+		{Path: "hello.js", Content: jsServer},
 	}
 
 	ctx := RunE2ETest(t, StandardServerBlock(), files)

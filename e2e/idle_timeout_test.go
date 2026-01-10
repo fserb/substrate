@@ -25,7 +25,7 @@ Deno.serve({
 });`
 
 	files := []TestFile{
-		{Path: "counter.js", Content: jsServer, Mode: 0755},
+		{Path: "counter.js", Content: jsServer},
 	}
 
 	ctx := RunE2ETest(t, ServerBlockWithConfig(SubstrateConfig{IdleTimeout: "-1"}), files)
@@ -55,7 +55,7 @@ Deno.serve({
 });`
 
 	files := []TestFile{
-		{Path: "server.js", Content: jsServer, Mode: 0755},
+		{Path: "server.js", Content: jsServer},
 	}
 
 	ctx := RunE2ETest(t, ServerBlockWithConfig(SubstrateConfig{IdleTimeout: "-1"}), files)

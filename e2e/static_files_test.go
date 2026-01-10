@@ -33,9 +33,9 @@ func TestStaticFilesAreServedNormally(t *testing.T) {
 It should be served directly by Caddy without going through substrate.`
 
 	files := []TestFile{
-		{Path: "app.js", Content: jsServer, Mode: 0755},
-		{Path: "index.html", Content: staticHTML, Mode: 0644},
-		{Path: "readme.txt", Content: staticText, Mode: 0644},
+		{Path: "app.js", Content: jsServer},
+		{Path: "index.html", Content: staticHTML},
+		{Path: "readme.txt", Content: staticText},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -68,8 +68,8 @@ func TestOnlyMatchedFilesAreProxied(t *testing.T) {
 console.log("Hello World");`
 
 	files := []TestFile{
-		{Path: "main.app.js", Content: appServer, Mode: 0755},
-		{Path: "regular.js", Content: regularJS, Mode: 0644},
+		{Path: "main.app.js", Content: appServer},
+		{Path: "regular.js", Content: regularJS},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)

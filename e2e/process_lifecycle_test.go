@@ -16,7 +16,7 @@ Deno.serve({path: Deno.args[0]}, (req) => {
 });`
 
 	files := []TestFile{
-		{Path: "counter.js", Content: counterServer, Mode: 0755},
+		{Path: "counter.js", Content: counterServer},
 	}
 
 	ctx := RunE2ETest(t, StandardServerBlock(), files)
@@ -44,8 +44,8 @@ Deno.serve({path: Deno.args[0]}, (req) => {
 });`
 
 	files := []TestFile{
-		{Path: "server1.js", Content: fmt.Sprintf(serverTemplate, "server1"), Mode: 0755},
-		{Path: "server2.js", Content: fmt.Sprintf(serverTemplate, "server2"), Mode: 0755},
+		{Path: "server1.js", Content: fmt.Sprintf(serverTemplate, "server1")},
+		{Path: "server2.js", Content: fmt.Sprintf(serverTemplate, "server2")},
 	}
 
 	ctx := RunE2ETest(t, StandardServerBlock(), files)
@@ -73,7 +73,7 @@ Deno.serve({path: Deno.args[0]}, (req) => {
 });`
 
 	files := []TestFile{
-		{Path: "exit_server.js", Content: exitAfterOneServer, Mode: 0755},
+		{Path: "exit_server.js", Content: exitAfterOneServer},
 	}
 
 	ctx := RunE2ETest(t, StandardServerBlock(), files)
@@ -105,7 +105,7 @@ Deno.serve({path: Deno.args[0]}, (req) => {
 });`
 
 	files := []TestFile{
-		{Path: "crash_server.js", Content: crashServer, Mode: 0755},
+		{Path: "crash_server.js", Content: crashServer},
 	}
 
 	ctx := RunE2ETest(t, StandardServerBlock(), files)

@@ -35,7 +35,7 @@ func TestRequestHeadersAreForwarded(t *testing.T) {
 });`
 
 	files := []TestFile{
-		{Path: "headers.js", Content: headerEchoServer, Mode: 0755},
+		{Path: "headers.js", Content: headerEchoServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -106,7 +106,7 @@ func TestRequestBodyIsForwarded(t *testing.T) {
 });`
 
 	files := []TestFile{
-		{Path: "body.js", Content: bodyEchoServer, Mode: 0755},
+		{Path: "body.js", Content: bodyEchoServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -179,7 +179,7 @@ func TestQueryParametersAreForwarded(t *testing.T) {
 });`
 
 	files := []TestFile{
-		{Path: "query.js", Content: queryEchoServer, Mode: 0755},
+		{Path: "query.js", Content: queryEchoServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)

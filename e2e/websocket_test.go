@@ -35,7 +35,7 @@ func TestBasicWebSocketEcho(t *testing.T) {
 });`
 
 	files := []TestFile{
-		{Path: "echo.ws.js", Content: wsServer, Mode: 0755},
+		{Path: "echo.ws.js", Content: wsServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -102,7 +102,7 @@ Deno.serve({path: Deno.args[0]}, (req) => {
 });`
 
 	files := []TestFile{
-		{Path: "concurrent.ws.js", Content: wsServer, Mode: 0755},
+		{Path: "concurrent.ws.js", Content: wsServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -192,7 +192,7 @@ func TestWebSocketConnectionPersistence(t *testing.T) {
 });`
 
 	files := []TestFile{
-		{Path: "persistent.ws.js", Content: wsServer, Mode: 0755},
+		{Path: "persistent.ws.js", Content: wsServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -249,4 +249,3 @@ func TestWebSocketConnectionPersistence(t *testing.T) {
 		t.Errorf("Expected count %q, got %q", expectedCountResponse, countResponse)
 	}
 }
-

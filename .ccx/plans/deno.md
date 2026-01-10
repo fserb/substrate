@@ -266,7 +266,7 @@ type Process struct {
 ---
 
 ### 16. Remove Mode: 0755 from e2e test files
-status: pending
+status: done
 depends: 5
 priority: 2
 files: e2e/*_test.go
@@ -356,3 +356,4 @@ Symlink handling was important when checking executable permissions (symlink tar
 - 2026-01-10: Combined TestNonExecutableFilesWork and TestReadOnlyFileWorks into single TestFilePermissionsDontMatter test that verifies 0755, 0644, and 0444 file permissions all work via Deno. Updated to use StandardServerBlock() helper.
 - 2026-01-10: Merged TestProcessStdoutLogging and TestProcessStderrLogging into single TestProcessOutputLogging test. Updated to use ServerBlockWithConfig() helper and removed Mode: 0755. The combined test exercises both stdout and stderr logging by using console.log and console.error in the test script.
 - 2026-01-10: Added GetBody(path) helper to E2ETestContext that returns body string and status code. Updated idle_timeout_test.go to use the new helper, removing direct io.ReadAll usage.
+- 2026-01-10: Renamed Process.Command to Process.ScriptPath for clarity since it now represents a JS script path rather than an executable. Also renamed ProcessStartupError.Command to ScriptPath and updated all log messages from 'command' to 'script_path'. Updated variable names in ProcessManager functions (removeProcess, cleanupIdleProcesses, Stop) to use scriptPath instead of command.

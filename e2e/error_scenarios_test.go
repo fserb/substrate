@@ -51,7 +51,7 @@ Deno.serve({path: Deno.args[0]}, (req) => {
 });`
 
 	files := []TestFile{
-		{Path: "slow.js", Content: slowStartupServer, Mode: 0755},
+		{Path: "slow.js", Content: slowStartupServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -91,7 +91,7 @@ Deno.serve({path: Deno.args[0]}, (req) => {
 });`
 
 	files := []TestFile{
-		{Path: "very_slow.js", Content: verySlowServer, Mode: 0755},
+		{Path: "very_slow.js", Content: verySlowServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -117,7 +117,7 @@ Deno.serve({path: Deno.args[0]}, (req) => {
 });`
 
 	files := []TestFile{
-		{Path: "failing.js", Content: failingServer, Mode: 0755},
+		{Path: "failing.js", Content: failingServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -143,7 +143,7 @@ Deno.serve({path: "/tmp/wrong-socket.sock"}, (req) => {
 });`
 
 	files := []TestFile{
-		{Path: "wrong_port.js", Content: wrongPortServer, Mode: 0755},
+		{Path: "wrong_port.js", Content: wrongPortServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -172,7 +172,7 @@ this is not valid javascript syntax!!!
 `
 
 	files := []TestFile{
-		{Path: "failing.js", Content: failingScript, Mode: 0755},
+		{Path: "failing.js", Content: failingScript},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -241,7 +241,7 @@ Deno.serve({path: Deno.args[0]}, () => {
 `
 
 	files := []TestFile{
-		{Path: "slow.js", Content: slowScript, Mode: 0755},
+		{Path: "slow.js", Content: slowScript},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)

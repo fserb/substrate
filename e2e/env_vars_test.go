@@ -43,7 +43,7 @@ Deno.serve({path: socketPath}, (req) => {
 });`
 
 	files := []TestFile{
-		{Path: "env-test.js", Content: envServer, Mode: 0755},
+		{Path: "env-test.js", Content: envServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -139,8 +139,8 @@ Deno.serve({path: socketPath}, (req) => {
 });`
 
 	files := []TestFile{
-		{Path: "server1.js", Content: process1, Mode: 0755},
-		{Path: "server2.js", Content: process2, Mode: 0755},
+		{Path: "server1.js", Content: process1},
+		{Path: "server2.js", Content: process2},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -208,7 +208,7 @@ Deno.serve({path: socketPath}, (req) => {
 });`
 
 	files := []TestFile{
-		{Path: "no-env.js", Content: envServer, Mode: 0755},
+		{Path: "no-env.js", Content: envServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
@@ -271,7 +271,7 @@ Deno.serve({path: socketPath}, (req) => {
 });`
 
 	files := []TestFile{
-		{Path: "substrate-check.js", Content: substrateServer, Mode: 0755},
+		{Path: "substrate-check.js", Content: substrateServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)

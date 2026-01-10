@@ -24,7 +24,7 @@ func TestURLRewriting(t *testing.T) {
 });`
 
 	files := []TestFile{
-		{Path: "echo.js", Content: pathEchoServer, Mode: 0755},
+		{Path: "echo.js", Content: pathEchoServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)

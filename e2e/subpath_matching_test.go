@@ -28,8 +28,8 @@ func TestSubpathMatching(t *testing.T) {
 });`
 
 	files := []TestFile{
-		{Path: "app.lemon.js", Content: subpathEchoServer, Mode: 0755},
-		{Path: "api.lemon.js", Content: subpathEchoServer, Mode: 0755},
+		{Path: "app.lemon.js", Content: subpathEchoServer},
+		{Path: "api.lemon.js", Content: subpathEchoServer},
 	}
 
 	ctx := RunE2ETest(t, serverBlock, files)
