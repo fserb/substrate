@@ -112,7 +112,7 @@ Deno.serve({ path: socketPath }, ...);
 ---
 
 ### 5. Integration tests pass
-status: pending
+status: done
 depends: 4
 priority: 0
 files: *_test.go
