@@ -19,8 +19,7 @@ func TestRequestHeadersAreForwarded(t *testing.T) {
 	}`
 
 	// Server that echoes back request headers
-	headerEchoServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-Deno.serve({path: Deno.args[0]}, (req) => {
+	headerEchoServer := `Deno.serve({path: Deno.args[0]}, (req) => {
 	const headers = {};
 	for (const [key, value] of req.headers.entries()) {
 		headers[key] = value;
@@ -92,8 +91,7 @@ func TestRequestBodyIsForwarded(t *testing.T) {
 	}`
 
 	// Server that echoes back request body
-	bodyEchoServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-Deno.serve({path: Deno.args[0]}, async (req) => {
+	bodyEchoServer := `Deno.serve({path: Deno.args[0]}, async (req) => {
 	const body = await req.text();
 
 	return new Response(JSON.stringify({
@@ -162,8 +160,7 @@ func TestQueryParametersAreForwarded(t *testing.T) {
 	}`
 
 	// Server that echoes back URL and query parameters
-	queryEchoServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-Deno.serve({path: Deno.args[0]}, (req) => {
+	queryEchoServer := `Deno.serve({path: Deno.args[0]}, (req) => {
 	const url = new URL(req.url);
 	const params = {};
 

@@ -20,8 +20,7 @@ func TestBasicWebSocketEcho(t *testing.T) {
 		to localhost
 	}`
 
-	wsServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-Deno.serve({path: Deno.args[0]}, (req) => {
+	wsServer := `Deno.serve({path: Deno.args[0]}, (req) => {
 	if (req.headers.get("upgrade") === "websocket") {
 		const { socket, response } = Deno.upgradeWebSocket(req);
 
@@ -79,8 +78,7 @@ func TestConcurrentWebSocketConnections(t *testing.T) {
 		to localhost
 	}`
 
-	wsServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-let connectionCount = 0;
+	wsServer := `let connectionCount = 0;
 
 Deno.serve({path: Deno.args[0]}, (req) => {
 	if (req.headers.get("upgrade") === "websocket") {
@@ -169,8 +167,7 @@ func TestWebSocketConnectionPersistence(t *testing.T) {
 		to localhost
 	}`
 
-	wsServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-Deno.serve({path: Deno.args[0]}, (req) => {
+	wsServer := `Deno.serve({path: Deno.args[0]}, (req) => {
 	if (req.headers.get("upgrade") === "websocket") {
 		const { socket, response } = Deno.upgradeWebSocket(req);
 		let messageCount = 0;

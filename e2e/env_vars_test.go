@@ -26,8 +26,7 @@ func TestEnvironmentVariables(t *testing.T) {
 		to localhost
 	}`
 
-	envServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write --allow-env --allow-read
-const [socketPath] = Deno.args;
+	envServer := `const [socketPath] = Deno.args;
 
 Deno.serve({path: socketPath}, (req) => {
 	const envVars = {
@@ -112,8 +111,7 @@ func TestEnvironmentVariablesMultipleProcesses(t *testing.T) {
 	}`
 
 	// First process - returns SHARED_VAR and PROCESS_TYPE
-	process1 := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write --allow-env --allow-read
-const [socketPath] = Deno.args;
+	process1 := `const [socketPath] = Deno.args;
 
 Deno.serve({path: socketPath}, (req) => {
 	const response = {
@@ -127,8 +125,7 @@ Deno.serve({path: socketPath}, (req) => {
 });`
 
 	// Second process - also returns the same env vars
-	process2 := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write --allow-env --allow-read
-const [socketPath] = Deno.args;
+	process2 := `const [socketPath] = Deno.args;
 
 Deno.serve({path: socketPath}, (req) => {
 	const response = {
@@ -196,8 +193,7 @@ func TestEnvironmentVariablesEmpty(t *testing.T) {
 		to localhost
 	}`
 
-	envServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write --allow-env --allow-read
-const [socketPath] = Deno.args;
+	envServer := `const [socketPath] = Deno.args;
 
 Deno.serve({path: socketPath}, (req) => {
 	// Should still inherit parent environment
@@ -261,8 +257,7 @@ func TestSubstrateEnvironmentVariable(t *testing.T) {
 		to localhost
 	}`
 
-	substrateServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write --allow-env --allow-read
-const [socketPath] = Deno.args;
+	substrateServer := `const [socketPath] = Deno.args;
 
 Deno.serve({path: socketPath}, (req) => {
 	const substrateValue = Deno.env.get("SUBSTRATE") || "not_set";

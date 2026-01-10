@@ -90,7 +90,7 @@ Keep the privilege-dropping logic (run deno as file owner when root).
 ---
 
 ### 4. E2E tests updated for Deno execution
-status: pending
+status: done
 depends: 3
 priority: 0
 files: e2e/*_test.go, test scripts

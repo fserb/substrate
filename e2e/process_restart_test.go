@@ -16,8 +16,7 @@ func TestProcessRestartsAfterExit(t *testing.T) {
 		to localhost
 	}`
 
-	exitAfterOneServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-let requestCount = 0;
+	exitAfterOneServer := `let requestCount = 0;
 Deno.serve({path: Deno.args[0]}, (req) => {
 	requestCount++;
 	const response = new Response("Request #" + requestCount + " - goodbye!");
@@ -57,8 +56,7 @@ func TestProcessRestartAfterCrash(t *testing.T) {
 		to localhost
 	}`
 
-	crashServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-let requestCount = 0;
+	crashServer := `let requestCount = 0;
 Deno.serve({path: Deno.args[0]}, (req) => {
 	requestCount++;
 	const response = new Response("Request #" + requestCount + " before crash");

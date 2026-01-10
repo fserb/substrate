@@ -17,8 +17,7 @@ func TestStaticFilesAreServedNormally(t *testing.T) {
 
 	file_server`
 
-	jsServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-Deno.serve({path: Deno.args[0]}, (req) => {
+	jsServer := `Deno.serve({path: Deno.args[0]}, (req) => {
 	return new Response("Dynamic JS response", {
 		headers: { "Content-Type": "text/plain" }
 	});
@@ -61,8 +60,7 @@ func TestOnlyMatchedFilesAreProxied(t *testing.T) {
 
 	file_server`
 
-	appServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-Deno.serve({path: Deno.args[0]}, (req) => {
+	appServer := `Deno.serve({path: Deno.args[0]}, (req) => {
 	return new Response("App server response");
 });`
 

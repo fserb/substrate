@@ -11,8 +11,7 @@ import (
 	"go.uber.org/zap/zaptest"
 )
 
-const simpleServerScript = `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-// Simple HTTP server for testing substrate transport
+const simpleServerScript = `// Simple HTTP server for testing substrate transport
 
 const [socketPath] = Deno.args;
 
@@ -59,8 +58,7 @@ func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	exitScript := filepath.Join(tmpDir, "exit.js")
-	scriptContent := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-const server = Deno.serve({
+	scriptContent := `const server = Deno.serve({
   path: Deno.args[0],
 }, () => new Response("OK"));
 
@@ -144,8 +142,7 @@ func TestProcessManager_NormalExitCleanup(t *testing.T) {
 	// Create a Deno script that starts a server but exits normally after a short delay
 	tmpDir := t.TempDir()
 	normalScript := filepath.Join(tmpDir, "normal.js")
-	scriptContent := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-const [socketPath] = Deno.args;
+	scriptContent := `const [socketPath] = Deno.args;
 
 // Start server
 const server = Deno.serve({

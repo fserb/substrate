@@ -38,8 +38,7 @@ func TestSlowStartupHandling(t *testing.T) {
 		to localhost
 	}`
 
-	slowStartupServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-console.log("Starting slow server...");
+	slowStartupServer := `console.log("Starting slow server...");
 
 // Simulate slow startup
 await new Promise(resolve => setTimeout(resolve, 300));
@@ -79,8 +78,7 @@ func TestVerySlowStartupTimeout(t *testing.T) {
 		to localhost
 	}`
 
-	verySlowServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-console.log("Starting very slow server...");
+	verySlowServer := `console.log("Starting very slow server...");
 
 // Simulate very slow startup (longer than timeout)
 await new Promise(resolve => setTimeout(resolve, 500));
@@ -110,8 +108,7 @@ func TestServerThatFailsToStart(t *testing.T) {
 		to localhost
 	}`
 
-	failingServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-// This will cause a syntax error
+	failingServer := `// This will cause a syntax error
 this is not valid javascript code!!!
 Deno.serve({path: Deno.args[0]}, (req) => {
 	return new Response("This won't work");
@@ -137,8 +134,7 @@ func TestServerThatBindsToWrongPort(t *testing.T) {
 		to localhost
 	}`
 
-	wrongPortServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-console.log("Args:", Deno.args);
+	wrongPortServer := `console.log("Args:", Deno.args);
 // Ignore the provided socket and use a different one
 Deno.serve({path: "/tmp/wrong-socket.sock"}, (req) => {
 	return new Response("Wrong socket server");

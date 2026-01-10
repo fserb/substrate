@@ -15,8 +15,7 @@ func TestSimpleSubstrateRequest(t *testing.T) {
 		to localhost
 	}`
 
-	jsServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-Deno.serve({path: Deno.args[0]}, (req) => {
+	jsServer := `Deno.serve({path: Deno.args[0]}, (req) => {
 	const url = new URL(req.url);
 	return new Response("Hello from substrate process!\nPath: " + url.pathname, {
     headers: { "Content-Type": "text/plain" }

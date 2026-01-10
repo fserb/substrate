@@ -22,8 +22,7 @@ func TestProcessStdoutLogging(t *testing.T) {
 	files := []TestFile{
 		{
 			Path: "stdout_test.js",
-			Content: `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-const [socketPath] = Deno.args;
+			Content: `const [socketPath] = Deno.args;
 
 // Log some messages to stdout and stderr
 console.log("Starting server on " + socketPath);
@@ -77,8 +76,7 @@ func TestProcessStderrLogging(t *testing.T) {
 	files := []TestFile{
 		{
 			Path: "stderr_test.js",
-			Content: `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-const [socketPath] = Deno.args;
+			Content: `const [socketPath] = Deno.args;
 
 // Log messages to both stdout and stderr
 console.log("Starting server on " + socketPath);
@@ -133,8 +131,7 @@ func TestProcessOutputWithCrash(t *testing.T) {
 	files := []TestFile{
 		{
 			Path: "crash_test.sh",
-			Content: `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-const [socketPath] = Deno.args;
+			Content: `const [socketPath] = Deno.args;
 
 console.log("Starting crash test server on " + socketPath);
 console.error("This server will crash after starting");

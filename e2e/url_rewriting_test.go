@@ -18,8 +18,7 @@ func TestURLRewriting(t *testing.T) {
 
 	file_server`
 
-	pathEchoServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-Deno.serve({path: Deno.args[0]}, (req) => {
+	pathEchoServer := `Deno.serve({path: Deno.args[0]}, (req) => {
 	const url = new URL(req.url);
 	return new Response(url.pathname);
 });`

@@ -30,8 +30,7 @@ func TestSubstrateTransport_GetOrStartProcess_Integration(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create a simple Deno script that starts an HTTP server
-	scriptContent := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-// Simple HTTP server for testing substrate transport
+	scriptContent := `// Simple HTTP server for testing substrate transport
 
 const [socketPath] = Deno.args;
 
@@ -453,8 +452,7 @@ func TestEnvironmentVariables_Integration(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Deno script that returns environment variables
-	envServerScript := `#!/usr/bin/env -S deno run --allow-net --allow-env --allow-read --allow-write
-const [socketPath] = Deno.args;
+	envServerScript := `const [socketPath] = Deno.args;
 
 const server = Deno.serve({
   path: socketPath,

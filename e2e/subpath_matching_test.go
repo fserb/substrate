@@ -21,8 +21,7 @@ func TestSubpathMatching(t *testing.T) {
 		}
 	}`
 
-	subpathEchoServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-Deno.serve({path: Deno.args[0]}, (req) => {
+	subpathEchoServer := `Deno.serve({path: Deno.args[0]}, (req) => {
 	const originalPath = new URL(req.url).pathname;
 	const subpath = req.headers.get('X-Subpath') || '';
 	return new Response(` + "`path:${originalPath} subpath:${subpath}`" + `);

@@ -17,8 +17,7 @@ func TestProcessReusesForMultipleRequests(t *testing.T) {
 		to localhost
 	}`
 
-	counterServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-let count = 0;
+	counterServer := `let count = 0;
 Deno.serve({path: Deno.args[0]}, (req) => {
 	count++;
 	return new Response("Request #" + count);
@@ -53,8 +52,7 @@ func TestDifferentFilesGetDifferentProcesses(t *testing.T) {
 		to localhost
 	}`
 
-	serverTemplate := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-const filename = "%s";
+	serverTemplate := `const filename = "%s";
 let count = 0;
 Deno.serve({path: Deno.args[0]}, (req) => {
 	count++;

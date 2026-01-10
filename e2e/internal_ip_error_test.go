@@ -20,8 +20,7 @@ func TestDetailedErrorForInternalIP(t *testing.T) {
 	}`
 
 	// Create a script that will fail to start
-	failingScript := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-console.log("Starting failing script...");
+	failingScript := `console.log("Starting failing script...");
 console.error("This will be captured in stderr");
 // This will cause a syntax error
 this is not valid javascript syntax!!!
@@ -86,8 +85,7 @@ func TestProcessStartupTimeout(t *testing.T) {
 	}`
 
 	// Create a script that takes too long to start
-	slowScript := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-console.log("Starting slow script...");
+	slowScript := `console.log("Starting slow script...");
 console.error("This is stderr output");
 // Wait longer than the timeout
 await new Promise(resolve => setTimeout(resolve, 200));

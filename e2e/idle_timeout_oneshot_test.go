@@ -19,8 +19,7 @@ func TestIdleTimeoutOneShotMode(t *testing.T) {
 	}`
 
 	// Server with a local counter that increments with each request
-	jsServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-const [socketPath] = Deno.args;
+	jsServer := `const [socketPath] = Deno.args;
 
 let count = 0;
 

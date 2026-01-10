@@ -22,8 +22,7 @@ func TestOneShotProcessCleanup(t *testing.T) {
 	}`
 
 	// Server that logs its PID so we can track it
-	jsServer := `#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
-const [socketPath] = Deno.args;
+	jsServer := `const [socketPath] = Deno.args;
 
 Deno.serve({
 	path: socketPath
