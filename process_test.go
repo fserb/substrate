@@ -11,32 +11,6 @@ import (
 	"go.uber.org/zap/zaptest"
 )
 
-const simpleServerScript = `// Simple HTTP server for testing substrate transport
-
-const [socketPath] = Deno.args;
-
-if (!socketPath) {
-  console.error("Usage: simple_server.js <socket-path>");
-  Deno.exit(1);
-}
-
-const server = Deno.serve({
-  path: socketPath,
-}, (req) => {
-  return new Response(` + "`Hello from substrate process!\nSocket: ${socketPath}\nURL: ${req.url}\nMethod: ${req.method}\nUser-Agent: ${req.headers.get(\"user-agent\") ?? \"unknown\"}`" + `, {
-    headers: { "Content-Type": "text/plain" }
-  });
-});
-
-console.log(` + "`Server listening on Unix socket: ${socketPath}`" + `);
-
-// Graceful shutdown
-Deno.addSignalListener("SIGTERM", () => {
-  console.log("Received SIGTERM, shutting down gracefully");
-  server.shutdown();
-  Deno.exit(0);
-});`
-
 func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -69,7 +43,7 @@ setTimeout(() => {
   Deno.exit(42);
 }, 1000);
 `
-	err = os.WriteFile(exitScript, []byte(scriptContent), 0755)
+	err = os.WriteFile(exitScript, []byte(scriptContent), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create exit script: %v", err)
 	}
@@ -157,7 +131,7 @@ setTimeout(() => {
   Deno.exit(0);
 }, 1000);
 `
-	err = os.WriteFile(normalScript, []byte(scriptContent), 0755)
+	err = os.WriteFile(normalScript, []byte(scriptContent), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create normal exit script: %v", err)
 	}

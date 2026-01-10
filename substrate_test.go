@@ -16,6 +16,33 @@ import (
 	"github.com/caddyserver/caddy/v2"
 )
 
+// simpleServerScript is a basic Deno HTTP server for testing
+const simpleServerScript = `// Simple HTTP server for testing substrate transport
+
+const [socketPath] = Deno.args;
+
+if (!socketPath) {
+  console.error("Usage: simple_server.js <socket-path>");
+  Deno.exit(1);
+}
+
+const server = Deno.serve({
+  path: socketPath,
+}, (req) => {
+  return new Response(` + "`Hello from substrate process!\nSocket: ${socketPath}\nURL: ${req.url}\nMethod: ${req.method}\nUser-Agent: ${req.headers.get(\"user-agent\") ?? \"unknown\"}`" + `, {
+    headers: { "Content-Type": "text/plain" }
+  });
+});
+
+console.log(` + "`Server listening on Unix socket: ${socketPath}`" + `);
+
+// Graceful shutdown
+Deno.addSignalListener("SIGTERM", () => {
+  console.log("Received SIGTERM, shutting down gracefully");
+  server.shutdown();
+  Deno.exit(0);
+});`
+
 func TestSubstrateTransport_GetOrStartProcess_Integration(t *testing.T) {
 	// Skip integration test if running in short mode
 	if testing.Short() {
@@ -58,7 +85,7 @@ Deno.addSignalListener("SIGTERM", () => {
 `
 
 	scriptPath := filepath.Join(tempDir, "test-server.js")
-	err = os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	err = os.WriteFile(scriptPath, []byte(scriptContent), 0644)
 	if err != nil {
 		t.Fatalf("Failed to write test script: %v", err)
 	}
@@ -137,7 +164,7 @@ func TestSymlinkExecution(t *testing.T) {
 
 	// Get the original test script
 	originalScript := filepath.Join(tempDir, "original_server.js")
-	err = os.WriteFile(originalScript, []byte(simpleServerScript), 0755)
+	err = os.WriteFile(originalScript, []byte(simpleServerScript), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create original script: %v", err)
 	}
@@ -304,7 +331,7 @@ func TestIdleTimeoutZeroDisablesCleanup(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	scriptPath := filepath.Join(tempDir, "test-server.js")
-	err = os.WriteFile(scriptPath, []byte(simpleServerScript), 0755)
+	err = os.WriteFile(scriptPath, []byte(simpleServerScript), 0644)
 	if err != nil {
 		t.Fatalf("Failed to write test script: %v", err)
 	}
@@ -388,7 +415,7 @@ func TestIdleTimeoutNegativeOneClosesAfterRequest(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	scriptPath := filepath.Join(tempDir, "test-server.js")
-	err = os.WriteFile(scriptPath, []byte(simpleServerScript), 0755)
+	err = os.WriteFile(scriptPath, []byte(simpleServerScript), 0644)
 	if err != nil {
 		t.Fatalf("Failed to write test script: %v", err)
 	}
@@ -474,7 +501,7 @@ const server = Deno.serve({
 `
 
 	scriptPath := filepath.Join(tempDir, "env-server.js")
-	err = os.WriteFile(scriptPath, []byte(envServerScript), 0755)
+	err = os.WriteFile(scriptPath, []byte(envServerScript), 0644)
 	if err != nil {
 		t.Fatalf("Failed to write test script: %v", err)
 	}
@@ -544,6 +571,3 @@ const server = Deno.serve({
 		}
 	}
 }
-
-// TODO: Add Caddyfile parsing test once we figure out the correct function to use
-// The UnmarshalCaddyfile functionality is tested through the integration tests

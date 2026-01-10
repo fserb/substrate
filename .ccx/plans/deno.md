@@ -361,7 +361,7 @@ Update README.md to reflect Deno-native execution:
 ---
 
 ### 23. Code simplification and refactoring review
-status: pending
+status: done
 depends: 22
 priority: 2
 files: *.go, e2e/*.go
@@ -397,3 +397,4 @@ Do a comprehensive review of the codebase for simplification opportunities:
 - 2026-01-10: Task 21: Reviewed symlink-specific tests. Kept both TestConfigureProcessSecurity_Symlink and TestWorkingDirectoryWithSymlink since they test legitimate behavior still relevant with Deno: (1) privilege dropping correctly follows symlinks to get file owner, (2) working directory is set to symlink's directory not target's. Updated comments in both tests to clarify why they're still needed in the Deno era.
 
 ---
+- 2026-01-10: Updated README.md to reflect Deno-native execution: removed shebangs and chmod +x instructions, removed Python/Go examples (substrate only runs JS via Deno), updated Process Contract section (scripts don't need executable permissions), added new How It Works step for Deno runtime auto-download, replaced Executable validation feature with Automatic Deno Management, added Idle Timeout Modes section to Configuration

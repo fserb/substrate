@@ -45,7 +45,7 @@ func TestConfigureProcessSecurity_FilePermissions(t *testing.T) {
 	}{
 		{"readable_0644", 0644},
 		{"readonly_0444", 0444},
-		{"executable_0755", 0755},
+		{"full_perms_0755", 0755},
 	}
 
 	for _, tc := range testCases {

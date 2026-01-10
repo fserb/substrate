@@ -5,8 +5,8 @@ import (
 )
 
 // TestFilePermissionsDontMatter verifies that Deno can run files regardless of
-// their executable permission. Unlike direct execution, Deno reads the file content
-// so execute permission is not required.
+// their permissions. Deno reads the file content so execute permission is not
+// required - only read access is needed.
 func TestFilePermissionsDontMatter(t *testing.T) {
 	files := []TestFile{
 		{Path: "default.js", Content: `Deno.serve({path: Deno.args[0]}, (req) => {
