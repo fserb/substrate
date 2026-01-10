@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"io"
 	"os/exec"
 	"strings"
 	"testing"
@@ -62,18 +61,13 @@ Deno.serve({
 	ctx := RunE2ETest(t, ServerBlockWithConfig(SubstrateConfig{IdleTimeout: "-1"}), files)
 
 	// First request
-	resp1, err := ctx.Tester.Client.Get(ctx.BaseURL + "/server.js")
-	if err != nil {
-		t.Fatalf("First request failed: %v", err)
-	}
-	body1, _ := io.ReadAll(resp1.Body)
-	resp1.Body.Close()
+	body1, _ := ctx.GetBody("/server.js")
 
-	if !strings.Contains(string(body1), "PID:") {
-		t.Fatalf("Expected response to contain 'PID:', got: %s", string(body1))
+	if !strings.Contains(body1, "PID:") {
+		t.Fatalf("Expected response to contain 'PID:', got: %s", body1)
 	}
 
-	pid1 := strings.TrimSpace(strings.TrimPrefix(string(body1), "PID:"))
+	pid1 := strings.TrimSpace(strings.TrimPrefix(body1, "PID:"))
 	t.Logf("First request PID: %s", pid1)
 
 	// Wait for process to be killed
@@ -86,18 +80,13 @@ Deno.serve({
 	}
 
 	// Second request should spawn a new process
-	resp2, err := ctx.Tester.Client.Get(ctx.BaseURL + "/server.js")
-	if err != nil {
-		t.Fatalf("Second request failed: %v", err)
-	}
-	body2, _ := io.ReadAll(resp2.Body)
-	resp2.Body.Close()
+	body2, _ := ctx.GetBody("/server.js")
 
-	if !strings.Contains(string(body2), "PID:") {
-		t.Fatalf("Expected response to contain 'PID:', got: %s", string(body2))
+	if !strings.Contains(body2, "PID:") {
+		t.Fatalf("Expected response to contain 'PID:', got: %s", body2)
 	}
 
-	pid2 := strings.TrimSpace(strings.TrimPrefix(string(body2), "PID:"))
+	pid2 := strings.TrimSpace(strings.TrimPrefix(body2, "PID:"))
 	t.Logf("Second request PID: %s", pid2)
 
 	if pid1 == pid2 {

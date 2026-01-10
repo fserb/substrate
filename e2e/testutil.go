@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -76,6 +77,23 @@ func (ctx *E2ETestContext) AssertGetStatus(path string, expectedStatus int) {
 		ctx.T.Fatalf("Failed to create request for %s: %v", path, err)
 	}
 	ctx.Tester.AssertResponseCode(req, expectedStatus)
+}
+
+// GetBody performs a GET request and returns the response body and status code.
+// Useful for tests that need to do complex assertions on response content.
+func (ctx *E2ETestContext) GetBody(path string) (string, int) {
+	resp, err := ctx.Tester.Client.Get(ctx.BaseURL + path)
+	if err != nil {
+		ctx.T.Fatalf("GET %s failed: %v", path, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		ctx.T.Fatalf("Failed to read response body for %s: %v", path, err)
+	}
+
+	return string(body), resp.StatusCode
 }
 
 func RunE2ETest(t *testing.T, serverBlockContent string, files []TestFile) *E2ETestContext {
