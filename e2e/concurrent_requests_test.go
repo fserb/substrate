@@ -11,18 +11,18 @@ func TestConcurrentRequestsToSameProcess(t *testing.T) {
 	concurrentServer := `let requestCount = 0;
 
 Deno.serve({path: Deno.args[0]}, async (req) => {
-	await new Promise(resolve => setTimeout(resolve, 10));
+	await new Promise(resolve => setTimeout(resolve, 5));
 
 	return new Response((++requestCount).toString());
 });`
 
 	files := []TestFile{
-		{Path: "concurrent.js", Content: concurrentServer, Mode: 0755},
+		{Path: "concurrent.js", Content: concurrentServer},
 	}
 
 	ctx := RunE2ETest(t, StandardServerBlock(), files)
 
-	const numRequests = 3
+	const numRequests = 8
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	seenNumbers := make(map[string]bool)
@@ -81,9 +81,9 @@ Deno.serve({path: Deno.args[0]}, async (req) => {
 });`
 
 	files := []TestFile{
-		{Path: "server_a.js", Content: fmt.Sprintf(serverTemplate, "ServerA"), Mode: 0755},
-		{Path: "server_b.js", Content: fmt.Sprintf(serverTemplate, "ServerB"), Mode: 0755},
-		{Path: "server_c.js", Content: fmt.Sprintf(serverTemplate, "ServerC"), Mode: 0755},
+		{Path: "server_a.js", Content: fmt.Sprintf(serverTemplate, "ServerA")},
+		{Path: "server_b.js", Content: fmt.Sprintf(serverTemplate, "ServerB")},
+		{Path: "server_c.js", Content: fmt.Sprintf(serverTemplate, "ServerC")},
 	}
 
 	ctx := RunE2ETest(t, StandardServerBlock(), files)
@@ -135,76 +135,5 @@ Deno.serve({path: Deno.args[0]}, async (req) => {
 
 	if len(seenResponses) != len(servers)*2 {
 		t.Errorf("Expected %d unique responses, got %d", len(servers)*2, len(seenResponses))
-	}
-}
-
-func TestHighConcurrencyToSingleProcess(t *testing.T) {
-	highConcurrencyServer := `let totalRequests = 0;
-
-Deno.serve({path: Deno.args[0]}, async (req) => {
-	await new Promise(resolve => setTimeout(resolve, 5));
-
-	return new Response((++totalRequests).toString());
-});`
-
-	files := []TestFile{
-		{Path: "high_concurrency.js", Content: highConcurrencyServer, Mode: 0755},
-	}
-
-	ctx := RunE2ETest(t, StandardServerBlock(), files)
-
-	const numRequests = 8
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	seenNumbers := make(map[string]bool)
-	successCount := 0
-
-	for i := 0; i < numRequests; i++ {
-		wg.Add(1)
-		go func(index int) {
-			defer wg.Done()
-
-			resp, err := http.Get(ctx.BaseURL + "/high_concurrency.js")
-			if err != nil {
-				t.Logf("Request %d failed: %v", index, err)
-				return
-			}
-			defer resp.Body.Close()
-
-			if resp.StatusCode != 200 {
-				t.Logf("Request %d got status %d", index, resp.StatusCode)
-				return
-			}
-
-			body := make([]byte, 1024)
-			n, _ := resp.Body.Read(body)
-			result := string(body[:n])
-			if result == "" {
-				t.Logf("Request %d got empty result", index)
-				return
-			}
-
-			mu.Lock()
-			if seenNumbers[result] {
-				t.Errorf("Request %d got duplicate number: %s", index, result)
-			} else {
-				seenNumbers[result] = true
-				successCount++
-				t.Logf("Request %d result: %s", index, result)
-			}
-			mu.Unlock()
-		}(i)
-	}
-
-	wg.Wait()
-
-	if successCount < numRequests/2 {
-		t.Errorf("Only %d/%d high concurrency requests succeeded with unique numbers", successCount, numRequests)
-	} else {
-		t.Logf("High concurrency test: %d/%d requests succeeded with unique numbers", successCount, numRequests)
-	}
-
-	if len(seenNumbers) != successCount {
-		t.Errorf("Expected %d unique numbers, got %d", successCount, len(seenNumbers))
 	}
 }
