@@ -305,7 +305,7 @@ Update documentation to reflect Deno execution model:
 ---
 
 ### 19. Clean up old comments referencing direct execution
-status: pending
+status: done
 depends: 5
 priority: 3
 files: process.go, substrate.go
@@ -360,3 +360,4 @@ Symlink handling was important when checking executable permissions (symlink tar
 - 2026-01-10: Removed Mode: 0755 from all e2e test files (36 occurrences across 15 test files). Files now use the default mode (0644) since Deno doesn't require executable permission. Simplified non_executable_test.go by consolidating three tests into two (removed redundant 0755 and 0644 tests, kept only default and 0444 readonly). All tests pass.
 - 2026-01-10: Fixed TestProcessOutputWithCrash to use .js extension instead of .sh for JavaScript content. Also updated to use ServerBlockWithConfig() helper for consistency with other tests.
 - 2026-01-10: Updated CLAUDE.md to reflect Deno execution model: changed architecture description to Deno-based Script Execution, added deno.go to project structure, updated Example Process Flow to show deno run command, rewrote Process Protocol section (removed shebang example, clarified scripts don't need executable permissions, explained Deno runtime auto-download), updated testing sections (embedded Deno runtime instead of system Deno), changed Key Design Decisions to mention Deno-based Execution and No Executable Check, added DenoManager to Core Components, removed Python file example from Caddyfile config, added note that substrate exclusively runs JavaScript via Deno
+- 2026-01-10: Simplified process_security_test.go: removed shell script shebangs and replaced with plain text files. Merged TestConfigureProcessSecurity_NonExecutableFile and TestConfigureProcessSecurity_ExecutableFile into single TestConfigureProcessSecurity_FilePermissions using table-driven tests for 0644, 0444, and 0755 modes. Simplified TestConfigureProcessSecurity_Symlink to use plain .js files. Changed all .sh extensions to .js. All tests pass.

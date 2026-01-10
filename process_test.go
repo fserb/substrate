@@ -211,8 +211,8 @@ setTimeout(() => {
 func TestValidateFilePath(t *testing.T) {
 	// Create a temporary directory and file for testing
 	tmpDir := t.TempDir()
-	validFile := filepath.Join(tmpDir, "test.sh")
-	err := os.WriteFile(validFile, []byte("#!/bin/bash\necho hello"), 0755)
+	validFile := filepath.Join(tmpDir, "test.js")
+	err := os.WriteFile(validFile, []byte("console.log('hello')"), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
@@ -224,14 +224,14 @@ func TestValidateFilePath(t *testing.T) {
 	}
 
 	// Test non-existent file
-	nonExistentFile := filepath.Join(tmpDir, "nonexistent.sh")
+	nonExistentFile := filepath.Join(tmpDir, "nonexistent.js")
 	err = validateFilePath(nonExistentFile)
 	if err == nil {
 		t.Error("Non-existent file should fail validation")
 	}
 
 	// Test relative path
-	err = validateFilePath("relative/path.sh")
+	err = validateFilePath("relative/path.js")
 	if err == nil {
 		t.Error("Relative path should fail validation")
 	}
@@ -266,13 +266,13 @@ func TestProcessManager_GetOrCreateHost_FileValidation(t *testing.T) {
 	defer pm.Stop()
 
 	// Test with non-existent file
-	_, err = pm.getOrCreateHost("/nonexistent/file.sh")
+	_, err = pm.getOrCreateHost("/nonexistent/file.js")
 	if err == nil {
 		t.Error("getOrCreateHost should fail for non-existent file")
 	}
 
 	// Test with relative path
-	_, err = pm.getOrCreateHost("relative/path.sh")
+	_, err = pm.getOrCreateHost("relative/path.js")
 	if err == nil {
 		t.Error("getOrCreateHost should fail for relative path")
 	}
@@ -329,28 +329,28 @@ func TestValidateFilePath_Symlink(t *testing.T) {
 	// Create a temporary directory
 	tmpDir := t.TempDir()
 
-	// Create a valid executable file
-	realFile := filepath.Join(tmpDir, "test.sh")
-	err := os.WriteFile(realFile, []byte("#!/bin/bash\necho hello"), 0755)
+	// Create a valid script file
+	realFile := filepath.Join(tmpDir, "test.js")
+	err := os.WriteFile(realFile, []byte("console.log('hello')"), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
-	// Create a symlink to the executable file
-	symlinkPath := filepath.Join(tmpDir, "test_symlink.sh")
+	// Create a symlink to the script file
+	symlinkPath := filepath.Join(tmpDir, "test_symlink.js")
 	err = os.Symlink(realFile, symlinkPath)
 	if err != nil {
 		t.Fatalf("Failed to create symlink: %v", err)
 	}
 
-	// Test that symlink to valid executable passes validation
+	// Test that symlink to valid file passes validation
 	err = validateFilePath(symlinkPath)
 	if err != nil {
-		t.Errorf("Symlink to executable should pass validation: %v", err)
+		t.Errorf("Symlink to file should pass validation: %v", err)
 	}
 
 	// Create a broken symlink
-	brokenSymlink := filepath.Join(tmpDir, "broken_symlink.sh")
+	brokenSymlink := filepath.Join(tmpDir, "broken_symlink.js")
 	err = os.Symlink("/nonexistent/target", brokenSymlink)
 	if err != nil {
 		t.Fatalf("Failed to create broken symlink: %v", err)
@@ -362,22 +362,23 @@ func TestValidateFilePath_Symlink(t *testing.T) {
 		t.Error("Broken symlink should fail validation")
 	}
 
-	// Create a symlink to a non-executable file
-	nonExecFile := filepath.Join(tmpDir, "nonexec.txt")
-	err = os.WriteFile(nonExecFile, []byte("content"), 0644)
+	// Create a symlink to a text file
+	textFile := filepath.Join(tmpDir, "content.txt")
+	err = os.WriteFile(textFile, []byte("content"), 0644)
 	if err != nil {
-		t.Fatalf("Failed to create non-executable file: %v", err)
+		t.Fatalf("Failed to create text file: %v", err)
 	}
 
-	nonExecSymlink := filepath.Join(tmpDir, "nonexec_symlink.txt")
-	err = os.Symlink(nonExecFile, nonExecSymlink)
+	textSymlink := filepath.Join(tmpDir, "content_symlink.txt")
+	err = os.Symlink(textFile, textSymlink)
 	if err != nil {
-		t.Fatalf("Failed to create symlink to non-executable: %v", err)
+		t.Fatalf("Failed to create symlink to text file: %v", err)
 	}
 
-	// Test that symlink to non-executable passes validateFilePath (executable check happens later)
-	err = validateFilePath(nonExecSymlink)
+	// Test that symlink to any regular file passes validateFilePath
+	// (Deno handles execution, not the OS)
+	err = validateFilePath(textSymlink)
 	if err != nil {
-		t.Errorf("Symlink to non-executable should pass validateFilePath: %v", err)
+		t.Errorf("Symlink to text file should pass validateFilePath: %v", err)
 	}
 }
