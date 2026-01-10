@@ -169,7 +169,7 @@ Merge `process_reuse_test.go` and `process_restart_test.go` into `process_lifecy
 ---
 
 ### 9. Merge error scenario tests
-status: pending
+status: done
 depends: 5
 priority: 1
 files: e2e/error_scenarios_test.go, e2e/internal_ip_error_test.go
@@ -349,3 +349,4 @@ Symlink handling was important when checking executable permissions (symlink tar
 - 2026-01-10: Aligned deno.go with pop's tested implementation: file-based zip extraction, simpler validation, proper cache path structure
 - 2026-01-10: Added StandardServerBlock() and ServerBlockWithConfig(SubstrateConfig) helpers to e2e/testutil.go. Updated simple_test.go, process_reuse_test.go, concurrent_requests_test.go, idle_timeout_oneshot_test.go, and idle_timeout_oneshot_cleanup_test.go to use the new helpers instead of duplicating server block patterns.
 - 2026-01-10: Merged idle_timeout_oneshot_test.go and idle_timeout_oneshot_cleanup_test.go into idle_timeout_test.go with two tests: TestOneShotModeStateReset (counter reset) and TestOneShotModeProcessCleanup (PID verification)
+- 2026-01-10: Merged process_reuse_test.go and process_restart_test.go into process_lifecycle_test.go. The new file contains 4 tests: TestProcessReusesForMultipleRequests, TestDifferentFilesGetDifferentProcesses, TestProcessRestartsAfterExit, and TestProcessRestartAfterCrash. Updated restart tests to use StandardServerBlock() helper.
