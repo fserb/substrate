@@ -36,7 +36,7 @@ type ProcessManager struct {
 }
 
 type Process struct {
-	Command    string
+	ScriptPath string
 	SocketPath string
 	DenoPath   string // Path to the deno binary
 	Cmd        *exec.Cmd
@@ -57,11 +57,11 @@ type Process struct {
 
 // ProcessStartupError contains detailed information about process startup failures
 type ProcessStartupError struct {
-	Err      error
-	ExitCode int
-	Stdout   string
-	Stderr   string
-	Command  string
+	Err        error
+	ExitCode   int
+	Stdout     string
+	Stderr     string
+	ScriptPath string
 }
 
 func (e *ProcessStartupError) Error() string {
@@ -210,7 +210,7 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 	)
 
 	process := &Process{
-		Command:        file,
+		ScriptPath:     file,
 		SocketPath:     socketPath,
 		DenoPath:       denoPath,
 		LastUsed:       time.Now(),
@@ -235,11 +235,11 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 			zap.Error(err),
 		)
 		return "", &ProcessStartupError{
-			Err:      fmt.Errorf("failed to start process: %w", err),
-			ExitCode: -1,
-			Stdout:   process.startupStdout.String(),
-			Stderr:   process.startupStderr.String(),
-			Command:  file,
+			Err:        fmt.Errorf("failed to start process: %w", err),
+			ExitCode:   -1,
+			Stdout:     process.startupStdout.String(),
+			Stderr:     process.startupStderr.String(),
+			ScriptPath: file,
 		}
 	}
 
@@ -275,11 +275,11 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 		delete(pm.processes, file)
 
 		return "", &ProcessStartupError{
-			Err:      fmt.Errorf("process startup failed: %w", err),
-			ExitCode: exitCode,
-			Stdout:   process.startupStdout.String(),
-			Stderr:   process.startupStderr.String(),
-			Command:  file,
+			Err:        fmt.Errorf("process startup failed: %w", err),
+			ExitCode:   exitCode,
+			Stdout:     process.startupStdout.String(),
+			Stderr:     process.startupStderr.String(),
+			ScriptPath: file,
 		}
 	}
 	return socketPath, nil
@@ -293,13 +293,13 @@ func (pm *ProcessManager) Stop() error {
 	defer pm.mu.Unlock()
 
 	var errors []error
-	for command, process := range pm.processes {
+	for scriptPath, process := range pm.processes {
 		if err := process.Stop(); err != nil {
 			pm.logger.Warn("process stop returned error (may be expected during shutdown)",
-				zap.String("command", command),
+				zap.String("script_path", scriptPath),
 				zap.Error(err),
 			)
-			errors = append(errors, fmt.Errorf("failed to stop process %s: %w", command, err))
+			errors = append(errors, fmt.Errorf("failed to stop process %s: %w", scriptPath, err))
 		}
 	}
 
@@ -347,15 +347,15 @@ func (pm *ProcessManager) cleanupLoop() {
 	}
 }
 
-func (pm *ProcessManager) removeProcess(command string) {
+func (pm *ProcessManager) removeProcess(scriptPath string) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	if _, exists := pm.processes[command]; exists {
+	if _, exists := pm.processes[scriptPath]; exists {
 		pm.logger.Info("removing exited process from pool",
-			zap.String("command", command),
+			zap.String("script_path", scriptPath),
 		)
-		delete(pm.processes, command)
+		delete(pm.processes, scriptPath)
 	}
 }
 
@@ -391,24 +391,24 @@ func (pm *ProcessManager) cleanupIdleProcesses() {
 	idleTimeout := time.Duration(pm.idleTimeout)
 	now := time.Now()
 
-	for command, process := range pm.processes {
+	for scriptPath, process := range pm.processes {
 		process.mu.RLock()
 		lastUsed := process.LastUsed
 		process.mu.RUnlock()
 
 		if now.Sub(lastUsed) > idleTimeout {
 			pm.logger.Info("stopping idle process",
-				zap.String("command", command),
+				zap.String("script_path", scriptPath),
 				zap.Duration("idle_time", now.Sub(lastUsed)),
 			)
 
 			if err := process.Stop(); err != nil {
 				pm.logger.Error("failed to stop idle process",
-					zap.String("command", command),
+					zap.String("script_path", scriptPath),
 					zap.Error(err),
 				)
 			} else {
-				delete(pm.processes, command)
+				delete(pm.processes, scriptPath)
 			}
 		}
 	}
@@ -419,9 +419,9 @@ func (p *Process) start() error {
 	defer p.mu.Unlock()
 
 	// Run script via deno: deno run --allow-all script.js socketPath
-	args := []string{"run", "--allow-all", p.Command, p.SocketPath}
+	args := []string{"run", "--allow-all", p.ScriptPath, p.SocketPath}
 	p.Cmd = exec.Command(p.DenoPath, args...)
-	p.Cmd.Dir = filepath.Dir(p.Command)
+	p.Cmd.Dir = filepath.Dir(p.ScriptPath)
 
 	// Set up environment variables
 	p.Cmd.Env = os.Environ() // Start with parent environment
@@ -432,16 +432,16 @@ func (p *Process) start() error {
 	p.Cmd.Env = append(p.Cmd.Env, "SUBSTRATE=true")
 
 	p.logger.Debug("configuring process command",
-		zap.String("command", p.Command),
+		zap.String("script_path", p.ScriptPath),
 		zap.Strings("args", args),
 		zap.String("working_dir", p.Cmd.Dir),
 		zap.String("socket_path", p.SocketPath),
 		zap.Any("env", p.env),
 	)
 
-	if err := configureProcessSecurity(p.Cmd, p.Command); err != nil {
+	if err := configureProcessSecurity(p.Cmd, p.ScriptPath); err != nil {
 		p.logger.Error("failed to configure process security",
-			zap.String("command", p.Command),
+			zap.String("script_path", p.ScriptPath),
 			zap.Error(err),
 		)
 		return fmt.Errorf("failed to configure process security: %w", err)
@@ -451,7 +451,7 @@ func (p *Process) start() error {
 	stdout, err := p.Cmd.StdoutPipe()
 	if err != nil {
 		p.logger.Warn("failed to create stdout pipe, output will not be logged",
-			zap.String("command", p.Command),
+			zap.String("script_path", p.ScriptPath),
 			zap.Error(err),
 		)
 	}
@@ -459,22 +459,22 @@ func (p *Process) start() error {
 	stderr, err := p.Cmd.StderrPipe()
 	if err != nil {
 		p.logger.Warn("failed to create stderr pipe, error output will not be logged",
-			zap.String("command", p.Command),
+			zap.String("script_path", p.ScriptPath),
 			zap.Error(err),
 		)
 	}
 
-	p.logger.Debug("starting process command",
-		zap.String("command", p.Command),
+	p.logger.Debug("starting process",
+		zap.String("script_path", p.ScriptPath),
 		zap.String("socket_path", p.SocketPath),
 	)
 
 	if err := p.Cmd.Start(); err != nil {
-		p.logger.Error("failed to start command",
-			zap.String("command", p.Command),
+		p.logger.Error("failed to start process",
+			zap.String("script_path", p.ScriptPath),
 			zap.Error(err),
 		)
-		return fmt.Errorf("failed to start command: %w", err)
+		return fmt.Errorf("failed to start process: %w", err)
 	}
 
 	// Start output logging and buffering goroutines after successful process start
@@ -486,7 +486,7 @@ func (p *Process) start() error {
 	}
 
 	p.logger.Info("process started successfully",
-		zap.String("command", p.Command),
+		zap.String("script_path", p.ScriptPath),
 		zap.Int("pid", p.Cmd.Process.Pid),
 		zap.String("socket_path", p.SocketPath),
 	)
@@ -507,7 +507,7 @@ func (p *Process) logAndBufferOutput(pipe io.ReadCloser, streamType string, logL
 		line := strings.TrimSpace(scanner.Text())
 		if line != "" {
 			p.logger.Log(logLevel, "process output",
-				zap.String("command", p.Command),
+				zap.String("script_path", p.ScriptPath),
 				zap.Int("pid", p.Cmd.Process.Pid),
 				zap.String("stream", streamType),
 				zap.String("output", line),
@@ -517,7 +517,7 @@ func (p *Process) logAndBufferOutput(pipe io.ReadCloser, streamType string, logL
 
 	if err := scanner.Err(); err != nil && err != io.EOF {
 		p.logger.Error("error reading process output",
-			zap.String("command", p.Command),
+			zap.String("script_path", p.ScriptPath),
 			zap.Int("pid", p.Cmd.Process.Pid),
 			zap.String("stream", streamType),
 			zap.Error(err),
@@ -555,7 +555,7 @@ func (p *Process) monitor() {
 	}
 
 	stopping := p.stopping
-	command := p.Command
+	scriptPath := p.ScriptPath
 	exitCode := p.exitCode
 	p.mu.Unlock()
 
@@ -564,13 +564,13 @@ func (p *Process) monitor() {
 	// Only log unexpected exits as errors
 	if exitCode != 0 && !stopping {
 		p.logger.Error("process crashed",
-			zap.String("command", command),
+			zap.String("script_path", scriptPath),
 			zap.Int("exit_code", exitCode),
 			zap.Error(err),
 		)
 	} else if exitCode == 0 && !stopping {
 		p.logger.Info("process exited normally",
-			zap.String("command", command),
+			zap.String("script_path", scriptPath),
 		)
 	}
 
@@ -590,7 +590,7 @@ func (p *Process) Stop() error {
 	p.mu.Unlock()
 
 	p.logger.Info("stopping process",
-		zap.String("command", p.Command),
+		zap.String("script_path", p.ScriptPath),
 		zap.Int("pid", pid),
 	)
 
@@ -609,7 +609,7 @@ func (p *Process) Stop() error {
 	select {
 	case <-time.After(10 * time.Second):
 		p.logger.Warn("process did not exit, force killing",
-			zap.String("command", p.Command),
+			zap.String("script_path", p.ScriptPath),
 			zap.Int("pid", pid),
 		)
 		p.mu.Lock()
@@ -634,7 +634,7 @@ func (pm *ProcessManager) waitForSocketReady(socketPath string, timeout time.Dur
 	pm.logger.Info("waiting for socket to become ready",
 		zap.String("socket_path", socketPath),
 		zap.Duration("timeout", timeout),
-		zap.String("command", process.Command),
+		zap.String("script_path", process.ScriptPath),
 	)
 
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -649,7 +649,7 @@ func (pm *ProcessManager) waitForSocketReady(socketPath string, timeout time.Dur
 				zap.Duration("timeout", timeout),
 				zap.Duration("elapsed", time.Since(start)),
 				zap.Int("attempts", attemptCount),
-				zap.String("command", process.Command),
+				zap.String("script_path", process.ScriptPath),
 			)
 			return fmt.Errorf("timeout waiting for socket %s to become ready after %v", socketPath, timeout)
 		}
@@ -661,7 +661,7 @@ func (pm *ProcessManager) waitForSocketReady(socketPath string, timeout time.Dur
 				zap.Duration("timeout", timeout),
 				zap.Duration("elapsed", time.Since(start)),
 				zap.Int("attempts", attemptCount),
-				zap.String("command", process.Command),
+				zap.String("script_path", process.ScriptPath),
 			)
 			return fmt.Errorf("timeout waiting for socket %s to become ready after %v", socketPath, timeout)
 		case <-ticker.C:
@@ -672,7 +672,7 @@ func (pm *ProcessManager) waitForSocketReady(socketPath string, timeout time.Dur
 				pm.logger.Error("process exited before socket became ready",
 					zap.String("socket_path", socketPath),
 					zap.Int("exit_code", process.Cmd.ProcessState.ExitCode()),
-					zap.String("command", process.Command),
+					zap.String("script_path", process.ScriptPath),
 					zap.Int("attempts", attemptCount),
 				)
 				return fmt.Errorf("process exited before socket became ready (exit code: %d)", process.Cmd.ProcessState.ExitCode())
@@ -686,7 +686,7 @@ func (pm *ProcessManager) waitForSocketReady(socketPath string, timeout time.Dur
 					zap.String("socket_path", socketPath),
 					zap.Duration("wait_time", waitTime),
 					zap.Int("attempts", attemptCount),
-					zap.String("command", process.Command),
+					zap.String("script_path", process.ScriptPath),
 				)
 				// Clear startup buffers to free memory after successful startup
 				process.clearStartupBuffers()

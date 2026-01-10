@@ -230,7 +230,7 @@ func (t *SubstrateTransport) RoundTrip(req *http.Request) (*http.Response, error
 		if startupErr, ok := err.(*ProcessStartupError); ok && isInternalIP(req.RemoteAddr) {
 			var details strings.Builder
 			details.WriteString(fmt.Sprintf("Process startup failed: %s\n\n", startupErr.Err.Error()))
-			details.WriteString(fmt.Sprintf("Command: %s\n", startupErr.Command))
+			details.WriteString(fmt.Sprintf("Script: %s\n", startupErr.ScriptPath))
 			details.WriteString(fmt.Sprintf("Exit code: %d\n\n", startupErr.ExitCode))
 			if startupErr.Stdout != "" {
 				details.WriteString("Stdout:\n")

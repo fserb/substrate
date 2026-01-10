@@ -290,7 +290,7 @@ func TestProcess_CrashDetection(t *testing.T) {
 
 	// Create a process that will crash (exit with code 1)
 	process := &Process{
-		Command:    "sh",
+		ScriptPath: "sh",
 		SocketPath: "/tmp/test.sock",
 		LastUsed:   time.Now(),
 		onExit:     func() {},

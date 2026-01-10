@@ -242,7 +242,7 @@ files: process_security.go
 ---
 
 ### 15. Rename Process.Command to Process.ScriptPath
-status: pending
+status: done
 depends: 5
 priority: 2
 files: process.go
@@ -355,3 +355,4 @@ Symlink handling was important when checking executable permissions (symlink tar
 - 2026-01-10: Consolidated concurrent tests - merged TestConcurrentRequestsToSameProcess and TestHighConcurrencyToSingleProcess into a single test with 8 concurrent requests. Removed Mode: 0755 from test files since it's no longer needed with Deno execution.
 - 2026-01-10: Combined TestNonExecutableFilesWork and TestReadOnlyFileWorks into single TestFilePermissionsDontMatter test that verifies 0755, 0644, and 0444 file permissions all work via Deno. Updated to use StandardServerBlock() helper.
 - 2026-01-10: Merged TestProcessStdoutLogging and TestProcessStderrLogging into single TestProcessOutputLogging test. Updated to use ServerBlockWithConfig() helper and removed Mode: 0755. The combined test exercises both stdout and stderr logging by using console.log and console.error in the test script.
+- 2026-01-10: Added GetBody(path) helper to E2ETestContext that returns body string and status code. Updated idle_timeout_test.go to use the new helper, removing direct io.ReadAll usage.
