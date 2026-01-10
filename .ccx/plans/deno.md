@@ -189,7 +189,7 @@ Simplify the three tests in `concurrent_requests_test.go`. `TestConcurrentReques
 ---
 
 ### 11. Simplify non_executable tests
-status: pending
+status: done
 depends: 5
 priority: 2
 files: e2e/non_executable_test.go
@@ -352,3 +352,4 @@ Symlink handling was important when checking executable permissions (symlink tar
 - 2026-01-10: Merged process_reuse_test.go and process_restart_test.go into process_lifecycle_test.go. The new file contains 4 tests: TestProcessReusesForMultipleRequests, TestDifferentFilesGetDifferentProcesses, TestProcessRestartsAfterExit, and TestProcessRestartAfterCrash. Updated restart tests to use StandardServerBlock() helper.
 - 2026-01-10: Merged internal_ip_error_test.go into error_scenarios_test.go. Added TestDetailedErrorForInternalIP and TestProcessStartupTimeoutWithDetailedError tests. Deleted the old file.
 - 2026-01-10: Reviewed privilege dropping for Deno execution. Confirmed current approach (script owner controls execution) is reasonable. Added explicit Security Model section to CLAUDE.md documenting: privilege dropping behavior, security properties, configuration considerations, and rationale for script-owner approach vs dedicated user. Also updated process_security.go comment with detailed security model documentation.
+- 2026-01-10: Consolidated concurrent tests - merged TestConcurrentRequestsToSameProcess and TestHighConcurrencyToSingleProcess into a single test with 8 concurrent requests. Removed Mode: 0755 from test files since it's no longer needed with Deno execution.
