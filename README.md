@@ -1,10 +1,12 @@
 # Substrate
 
-A Caddy module that adds a custom transport method for `reverse_proxy`, enabling dynamic process execution based on file requests.
+A Caddy module that adds a custom transport method for `reverse_proxy`, enabling dynamic JavaScript execution via Deno.
 
 ## Overview
 
-Substrate behaves like FastCGI but over HTTP - it executes requested files as separate processes and proxies HTTP traffic to them via Unix domain sockets. Each file gets its own process with automatic lifecycle management.
+Substrate behaves like FastCGI but over HTTP - it runs JavaScript files as separate Deno processes and proxies HTTP traffic to them via Unix domain sockets. Each file gets its own process with automatic lifecycle management.
+
+Substrate automatically downloads and manages its own Deno runtime, so no external dependencies are required.
 
 ## Installation
 
@@ -33,9 +35,8 @@ reverse_proxy @js_files {
 }
 ```
 
-2. Create an executable script (e.g., `hello.js`):
+2. Create a JavaScript file (e.g., `hello.js`):
 ```javascript
-#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
 const [socketPath] = Deno.args;
 
 Deno.serve({
@@ -45,9 +46,8 @@ Deno.serve({
 });
 ```
 
-3. Make it executable and start Caddy:
+3. Start Caddy:
 ```bash
-chmod +x hello.js
 caddy run
 ```
 
@@ -59,59 +59,32 @@ curl http://localhost/hello.js
 
 ## How It Works
 
-1. **File Matching**: Caddy's file matcher identifies executable files
-2. **Process Creation**: Substrate executes the file with a Unix socket path argument
-3. **Socket Management**: Each file gets a unique Unix domain socket automatically assigned
-4. **Request Proxying**: HTTP requests are proxied to the running process via Unix socket
-5. **Lifecycle Management**: Processes are reused, restarted, and cleaned up automatically
+1. **File Matching**: Caddy's file matcher identifies JavaScript files
+2. **Deno Runtime**: Substrate downloads and caches Deno automatically on first use
+3. **Process Creation**: Substrate runs the file via `deno run --allow-all script.js socketPath`
+4. **Socket Management**: Each file gets a unique Unix domain socket automatically assigned
+5. **Request Proxying**: HTTP requests are proxied to the running process via Unix socket
+6. **Lifecycle Management**: Processes are reused, restarted, and cleaned up automatically
 
 ## Process Contract
 
-Your executable receives one argument:
-- `argv[1]`: Unix socket path to listen on (e.g., `/tmp/substrate-abc123.sock`)
+Your JavaScript file receives one argument:
+- `Deno.args[0]`: Unix socket path to listen on (e.g., `/tmp/substrate-abc123.sock`)
 
-Example in various languages:
+Scripts do not need shebang lines or executable permission - Substrate handles execution via its embedded Deno runtime.
 
-**Deno:**
+**Example:**
 ```javascript
-#!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
 const [socketPath] = Deno.args;
 
 Deno.serve({ path: socketPath }, (req) => {
   return new Response('Hello!');
 });
-```
 
-**Python:**
-```python
-#!/usr/bin/env python3
-import sys
-import socket
-import http.server
-import socketserver
-
-socket_path = sys.argv[1]
-
-class UnixHTTPServer(socketserver.UnixStreamServer):
-    def server_bind(self):
-        socketserver.UnixStreamServer.server_bind(self)
-
-with UnixHTTPServer(socket_path, http.server.SimpleHTTPRequestHandler) as httpd:
-    httpd.serve_forever()
-```
-
-**Go:**
-```go
-//go:build ignore
-
-package main
-import ("net"; "net/http"; "os")
-
-func main() {
-    socketPath := os.Args[1]
-    listener, _ := net.Listen("unix", socketPath)
-    http.Serve(listener, handler)
-}
+// Optional: Graceful shutdown
+Deno.addSignalListener("SIGTERM", () => {
+  Deno.exit(0);
+});
 ```
 
 ## Configuration
@@ -127,28 +100,22 @@ reverse_proxy @matcher {
 }
 ```
 
-### Multiple File Types
+### Idle Timeout Modes
 
-```
-@scripts {
-    path *.js *.py *.go
-    file {path}
-}
-
-reverse_proxy @scripts {
-    transport substrate
-}
-```
+- **Positive values** (e.g., `5m`): Normal operation - cleanup after idle period
+- **Zero** (`0`): Processes run indefinitely until manually stopped
+- **Negative one** (`-1`): One-shot mode - process terminates after each request
 
 ## Features
 
-- **Zero Configuration**: Processes just need to listen on the provided Unix socket
+- **Zero Configuration**: Scripts just need to listen on the provided Unix socket
+- **Automatic Deno Management**: Deno runtime downloaded and cached automatically
 - **Automatic Socket Management**: Each process gets a unique Unix domain socket
 - **Process Reuse**: Same file requests share the same process
 - **Hot Reloading**: File changes restart the associated process
 - **Concurrent Safe**: Multiple requests handled properly
 - **Resource Cleanup**: Idle processes and socket files automatically cleaned up
-- **Security**: Executable validation, Unix socket isolation, and privilege dropping when running as root
+- **Security**: Unix socket isolation and privilege dropping when running as root
 - **Advanced Routing**: URL rewriting, subpath matching, and pattern-based routing
 
 ## Development
@@ -162,7 +129,7 @@ reverse_proxy @scripts {
 ## Advanced Usage
 
 ### URL Rewriting
-Route clean URLs to executable scripts:
+Route clean URLs to JavaScript scripts:
 ```
 @simple_rewrite {
     not path *.js

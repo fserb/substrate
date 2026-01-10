@@ -343,6 +343,38 @@ files: e2e/working_directory_test.go, process_security_test.go
 
 Symlink handling was important when checking executable permissions (symlink target vs symlink itself). With Deno, symlinks are transparent - Deno just reads whatever the path resolves to. Review if symlink-specific tests are still needed or can be simplified.
 
+### 22. Update README.md for Deno execution model
+status: done
+depends: 18
+priority: 1
+files: README.md
+
+Update README.md to reflect Deno-native execution:
+- Remove shebang lines from examples (substrate manages its own Deno)
+- Remove `chmod +x` instruction (no executable permission needed)
+- Remove Python and Go examples (substrate only runs JavaScript via Deno)
+- Update "Process Contract" section - scripts receive socket path, no shebang needed
+- Update "How It Works" - mention Deno runtime, remove "executable" references
+- Update "Features" section - replace "Executable validation" with appropriate description
+- Clarify that substrate downloads and manages its own Deno binary
+
+---
+
+### 23. Code simplification and refactoring review
+status: pending
+depends: 22
+priority: 2
+files: *.go, e2e/*.go
+
+Do a comprehensive review of the codebase for simplification opportunities:
+- Look for dead code or unused functions after the Deno migration
+- Check for redundant error handling or overly defensive code
+- Look for opportunities to consolidate similar logic
+- Review naming consistency (script vs executable terminology)
+- Check for any remaining references to the old execution model
+- Look for test helpers that could reduce duplication further
+- Consider if any e2e tests are redundant after consolidation
+
 ## Notes
 
 - 2026-01-10: Plan created
@@ -362,3 +394,6 @@ Symlink handling was important when checking executable permissions (symlink tar
 - 2026-01-10: Updated CLAUDE.md to reflect Deno execution model: changed architecture description to Deno-based Script Execution, added deno.go to project structure, updated Example Process Flow to show deno run command, rewrote Process Protocol section (removed shebang example, clarified scripts don't need executable permissions, explained Deno runtime auto-download), updated testing sections (embedded Deno runtime instead of system Deno), changed Key Design Decisions to mention Deno-based Execution and No Executable Check, added DenoManager to Core Components, removed Python file example from Caddyfile config, added note that substrate exclusively runs JavaScript via Deno
 - 2026-01-10: Simplified process_security_test.go: removed shell script shebangs and replaced with plain text files. Merged TestConfigureProcessSecurity_NonExecutableFile and TestConfigureProcessSecurity_ExecutableFile into single TestConfigureProcessSecurity_FilePermissions using table-driven tests for 0644, 0444, and 0755 modes. Simplified TestConfigureProcessSecurity_Symlink to use plain .js files. Changed all .sh extensions to .js. All tests pass.
 - 2026-01-10: Updated process_test.go to remove references to the old direct execution model: changed .sh extensions to .js, replaced shebang content with plain JavaScript, updated comments from 'executable' to 'script/file', and clarified that Deno handles execution (not the OS). All tests pass.
+- 2026-01-10: Task 21: Reviewed symlink-specific tests. Kept both TestConfigureProcessSecurity_Symlink and TestWorkingDirectoryWithSymlink since they test legitimate behavior still relevant with Deno: (1) privilege dropping correctly follows symlinks to get file owner, (2) working directory is set to symlink's directory not target's. Updated comments in both tests to clarify why they're still needed in the Deno era.
+
+---
