@@ -37,10 +37,13 @@ type DenoManager struct {
 
 // NewDenoManager creates a new DenoManager with the default version
 func NewDenoManager(logger *zap.Logger) *DenoManager {
-	homeDir, _ := os.UserHomeDir()
+	rootDir := "/opt/homebrew/var/substrate/deno"
+	if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
+		rootDir = filepath.Join(homeDir, cacheBasePath)
+	}
 	return &DenoManager{
 		version: DenoVersion,
-		rootDir: filepath.Join(homeDir, cacheBasePath),
+		rootDir: rootDir,
 		logger:  logger,
 	}
 }
