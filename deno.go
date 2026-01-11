@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	DenoVersion   = "v2.1.9"
+	DenoVersion   = "v2.6.4"
 	cacheBasePath = ".cache/substrate/deno"
 )
 
