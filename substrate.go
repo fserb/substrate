@@ -23,6 +23,7 @@ type SubstrateTransport struct {
 	IdleTimeout    caddy.Duration    `json:"idle_timeout,omitempty"`
 	StartupTimeout caddy.Duration    `json:"startup_timeout,omitempty"`
 	Env            map[string]string `json:"env,omitempty"`
+	DenoConfig     string            `json:"deno_config,omitempty"`
 
 	ctx       caddy.Context
 	transport http.RoundTripper
@@ -66,6 +67,7 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 		zap.Duration("idle_timeout", time.Duration(t.IdleTimeout)),
 		zap.Duration("startup_timeout", time.Duration(t.StartupTimeout)),
 		zap.Any("env", t.Env),
+		zap.String("deno_config", t.DenoConfig),
 	)
 
 	// Create HTTP transport with Unix socket support
@@ -82,7 +84,7 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 	t.deno = NewDenoManager(t.logger)
 	t.logger.Debug("deno manager created successfully")
 
-	manager, err := NewProcessManager(t.IdleTimeout, t.StartupTimeout, t.Env, t.deno, t.logger)
+	manager, err := NewProcessManager(t.IdleTimeout, t.StartupTimeout, t.Env, t.DenoConfig, t.deno, t.logger)
 	if err != nil {
 		t.logger.Error("failed to create process manager", zap.Error(err))
 		return fmt.Errorf("failed to create process manager: %w", err)
@@ -94,6 +96,7 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 		zap.Duration("idle_timeout", time.Duration(t.IdleTimeout)),
 		zap.Duration("startup_timeout", time.Duration(t.StartupTimeout)),
 		zap.Any("env", t.Env),
+		zap.String("deno_config", t.DenoConfig),
 	)
 
 	return nil
@@ -170,6 +173,11 @@ func (t *SubstrateTransport) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 					value := d.Val()
 					t.Env[key] = value
 				}
+			case "deno_config":
+				if !d.NextArg() {
+					return d.ArgErr()
+				}
+				t.DenoConfig = d.Val()
 			default:
 				return d.Errf("unknown directive: %s", d.Val())
 			}

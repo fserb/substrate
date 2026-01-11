@@ -22,6 +22,7 @@ func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 		caddy.Duration(time.Minute),   // idle timeout
 		caddy.Duration(1*time.Second), // startup timeout
 		nil,                           // no env vars for this test
+		"",                            // no deno config
 		deno,
 		logger,
 	)
@@ -105,6 +106,7 @@ func TestProcessManager_NormalExitCleanup(t *testing.T) {
 		caddy.Duration(time.Minute),   // idle timeout
 		caddy.Duration(3*time.Second), // startup timeout
 		nil,                           // no env vars for this test
+		"",                            // no deno config
 		deno,
 		logger,
 	)
@@ -231,6 +233,7 @@ func TestProcessManager_GetOrCreateHost_FileValidation(t *testing.T) {
 		caddy.Duration(time.Minute),   // idle timeout
 		caddy.Duration(3*time.Second), // startup timeout
 		nil,                           // no env vars for this test
+		"",                            // no deno config
 		deno,
 		logger,
 	)
