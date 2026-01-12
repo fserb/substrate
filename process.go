@@ -26,7 +26,7 @@ type ProcessManager struct {
 	idleTimeout    caddy.Duration
 	startupTimeout caddy.Duration
 	env            map[string]string
-	denoConfig     string
+	denoOpts       string
 	logger         *zap.Logger
 	processes      map[string]*Process
 	mu             sync.RWMutex
@@ -40,7 +40,7 @@ type Process struct {
 	ScriptPath string
 	SocketPath string
 	DenoPath   string // Path to the deno binary
-	DenoConfig string // Path to deno.json config file
+	DenoOpts   string // Extra deno options (e.g., "--config=/path/to/deno.json")
 	Cmd        *exec.Cmd
 	LastUsed   time.Time
 	exitCode   int
@@ -70,12 +70,12 @@ func (e *ProcessStartupError) Error() string {
 	return e.Err.Error()
 }
 
-func NewProcessManager(idleTimeout, startupTimeout caddy.Duration, env map[string]string, denoConfig string, deno *DenoManager, logger *zap.Logger) (*ProcessManager, error) {
+func NewProcessManager(idleTimeout, startupTimeout caddy.Duration, env map[string]string, denoOpts string, deno *DenoManager, logger *zap.Logger) (*ProcessManager, error) {
 	logger.Info("creating new process manager",
 		zap.Duration("idle_timeout", time.Duration(idleTimeout)),
 		zap.Duration("startup_timeout", time.Duration(startupTimeout)),
 		zap.Any("env", env),
-		zap.String("deno_config", denoConfig),
+		zap.String("deno_opts", denoOpts),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -84,7 +84,7 @@ func NewProcessManager(idleTimeout, startupTimeout caddy.Duration, env map[strin
 		idleTimeout:    idleTimeout,
 		startupTimeout: startupTimeout,
 		env:            env,
-		denoConfig:     denoConfig,
+		denoOpts:       denoOpts,
 		logger:         logger,
 		processes:      make(map[string]*Process),
 		ctx:            ctx,
@@ -217,7 +217,7 @@ func (pm *ProcessManager) getOrCreateHost(file string) (string, error) {
 		ScriptPath:     file,
 		SocketPath:     socketPath,
 		DenoPath:       denoPath,
-		DenoConfig:     pm.denoConfig,
+		DenoOpts:       pm.denoOpts,
 		LastUsed:       time.Now(),
 		onExit:         func() { pm.removeProcess(file) },
 		logger:         pm.logger,
@@ -423,10 +423,13 @@ func (p *Process) start() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Run script via deno: deno run --allow-all [--config=path] script.js socketPath
+	// Run script via deno: deno run --allow-all [extra opts] script.js socketPath
 	args := []string{"run", "--allow-all"}
-	if p.DenoConfig != "" {
-		args = append(args, "--config="+p.DenoConfig)
+	if p.DenoOpts != "" {
+		// Split deno_opts by whitespace to get individual arguments
+		for _, opt := range strings.Fields(p.DenoOpts) {
+			args = append(args, opt)
+		}
 	}
 	args = append(args, p.ScriptPath, p.SocketPath)
 	p.Cmd = exec.Command(p.DenoPath, args...)

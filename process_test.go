@@ -17,12 +17,12 @@ func TestProcessManager_ProcessExitCleanup(t *testing.T) {
 	}
 
 	logger := zaptest.NewLogger(t)
-	deno := NewDenoManager(logger)
+	deno := NewDenoManager("", logger)
 	pm, err := NewProcessManager(
 		caddy.Duration(time.Minute),   // idle timeout
 		caddy.Duration(1*time.Second), // startup timeout
 		nil,                           // no env vars for this test
-		"",                            // no deno config
+		"",                            // no deno opts
 		deno,
 		logger,
 	)
@@ -101,12 +101,12 @@ func TestProcessManager_NormalExitCleanup(t *testing.T) {
 	}
 
 	logger := zaptest.NewLogger(t)
-	deno := NewDenoManager(logger)
+	deno := NewDenoManager("", logger)
 	pm, err := NewProcessManager(
 		caddy.Duration(time.Minute),   // idle timeout
 		caddy.Duration(3*time.Second), // startup timeout
 		nil,                           // no env vars for this test
-		"",                            // no deno config
+		"",                            // no deno opts
 		deno,
 		logger,
 	)
@@ -228,12 +228,12 @@ func TestValidateFilePath(t *testing.T) {
 
 func TestProcessManager_GetOrCreateHost_FileValidation(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	deno := NewDenoManager(logger)
+	deno := NewDenoManager("", logger)
 	pm, err := NewProcessManager(
 		caddy.Duration(time.Minute),   // idle timeout
 		caddy.Duration(3*time.Second), // startup timeout
 		nil,                           // no env vars for this test
-		"",                            // no deno config
+		"",                            // no deno opts
 		deno,
 		logger,
 	)

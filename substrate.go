@@ -23,7 +23,8 @@ type SubstrateTransport struct {
 	IdleTimeout    caddy.Duration    `json:"idle_timeout,omitempty"`
 	StartupTimeout caddy.Duration    `json:"startup_timeout,omitempty"`
 	Env            map[string]string `json:"env,omitempty"`
-	DenoConfig     string            `json:"deno_config,omitempty"`
+	DenoOpts       string            `json:"deno_opts,omitempty"`
+	CacheDir       string            `json:"cache_dir,omitempty"`
 
 	ctx       caddy.Context
 	transport http.RoundTripper
@@ -67,7 +68,8 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 		zap.Duration("idle_timeout", time.Duration(t.IdleTimeout)),
 		zap.Duration("startup_timeout", time.Duration(t.StartupTimeout)),
 		zap.Any("env", t.Env),
-		zap.String("deno_config", t.DenoConfig),
+		zap.String("deno_opts", t.DenoOpts),
+		zap.String("cache_dir", t.CacheDir),
 	)
 
 	// Create HTTP transport with Unix socket support
@@ -81,10 +83,10 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 	t.logger.Debug("HTTP transport provisioned successfully")
 
 	// Create Deno manager for downloading/caching the Deno runtime
-	t.deno = NewDenoManager(t.logger)
+	t.deno = NewDenoManager(t.CacheDir, t.logger)
 	t.logger.Debug("deno manager created successfully")
 
-	manager, err := NewProcessManager(t.IdleTimeout, t.StartupTimeout, t.Env, t.DenoConfig, t.deno, t.logger)
+	manager, err := NewProcessManager(t.IdleTimeout, t.StartupTimeout, t.Env, t.DenoOpts, t.deno, t.logger)
 	if err != nil {
 		t.logger.Error("failed to create process manager", zap.Error(err))
 		return fmt.Errorf("failed to create process manager: %w", err)
@@ -96,7 +98,8 @@ func (t *SubstrateTransport) Provision(ctx caddy.Context) error {
 		zap.Duration("idle_timeout", time.Duration(t.IdleTimeout)),
 		zap.Duration("startup_timeout", time.Duration(t.StartupTimeout)),
 		zap.Any("env", t.Env),
-		zap.String("deno_config", t.DenoConfig),
+		zap.String("deno_opts", t.DenoOpts),
+		zap.String("cache_dir", t.CacheDir),
 	)
 
 	return nil
@@ -173,11 +176,16 @@ func (t *SubstrateTransport) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 					value := d.Val()
 					t.Env[key] = value
 				}
-			case "deno_config":
+			case "deno_opts":
 				if !d.NextArg() {
 					return d.ArgErr()
 				}
-				t.DenoConfig = d.Val()
+				t.DenoOpts = d.Val()
+			case "cache_dir":
+				if !d.NextArg() {
+					return d.ArgErr()
+				}
+				t.CacheDir = d.Val()
 			default:
 				return d.Errf("unknown directive: %s", d.Val())
 			}
