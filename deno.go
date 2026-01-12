@@ -3,7 +3,8 @@ Deno runtime management.
 
 DenoManager downloads and caches the Deno binary for the current platform.
 Substrate uses a specific Deno version to ensure consistent behavior.
-The binary is cached in ~/.cache/substrate/deno/{version}-{platform}/.
+The binary is cached in {cache_dir}/deno/{version}-{platform}/.
+Default cache_dir is ~/.cache/substrate/.
 
 This avoids requiring Deno to be pre-installed on the system.
 */
@@ -23,10 +24,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	DenoVersion   = "v2.6.4"
-	cacheBasePath = ".cache/substrate/deno"
-)
+const DenoVersion = "v2.6.4"
 
 // DenoManager handles downloading and caching of the Deno runtime
 type DenoManager struct {
@@ -36,18 +34,17 @@ type DenoManager struct {
 }
 
 // NewDenoManager creates a new DenoManager with the default version
-// If cacheDir is empty, uses ~/.cache/substrate/deno/ (or /opt/homebrew/var/substrate/deno as fallback)
+// If cacheDir is empty, uses ~/.cache/substrate/
+// Deno binary is stored in {cacheDir}/deno/{version}-{platform}/
 func NewDenoManager(cacheDir string, logger *zap.Logger) *DenoManager {
 	rootDir := cacheDir
 	if rootDir == "" {
-		rootDir = "/opt/homebrew/var/substrate/deno"
-		if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
-			rootDir = filepath.Join(homeDir, cacheBasePath)
-		}
+		homeDir, _ := os.UserHomeDir()
+		rootDir = filepath.Join(homeDir, ".cache/substrate")
 	}
 	return &DenoManager{
 		version: DenoVersion,
-		rootDir: rootDir,
+		rootDir: filepath.Join(rootDir, "deno"),
 		logger:  logger,
 	}
 }
